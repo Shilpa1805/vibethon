@@ -177,7 +177,7 @@ export async function buildPracticeFrame(skill: SkillId): Promise<string> {
 }
 
 export async function verifyCurrentPractice(skill: SkillId, frameId: string): Promise<VerificationResult> {
-  const node = figma.getNodeById(frameId);
+  const node = await figma.getNodeByIdAsync(frameId);
   if (!node || node.type !== 'FRAME') {
     return {
       passed: false,
