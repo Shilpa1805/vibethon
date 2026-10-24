@@ -111,6 +111,7 @@
           padding = { l, r, t, b };
         }
         const childCount = "children" in sceneNode && Array.isArray(sceneNode.children) ? sceneNode.children.length : 0;
+        const isComponent = sceneNode.type === "COMPONENT" || sceneNode.type === "INSTANCE" || sceneNode.type === "COMPONENT_SET";
         const factNode = {
           id: sceneNode.id,
           type: nodeType,
@@ -126,7 +127,9 @@
           fillColor,
           width: "width" in sceneNode ? sceneNode.width : void 0,
           height: "height" in sceneNode ? sceneNode.height : void 0,
-          hue: getHslHue(textColor || fillColor)
+          hue: getHslHue(textColor || fillColor),
+          isComponent,
+          componentName: isComponent ? sceneNode.name : null
         };
         nodes.push(factNode);
       }
@@ -141,6 +144,22 @@
     return {
       nodes,
       truncated
+    };
+  }
+  async function extractMultipleNodesFacts(targetNodes) {
+    const combinedNodes = [];
+    let isTruncated = false;
+    for (const node of targetNodes) {
+      const facts = await extractDesignFacts(node);
+      combinedNodes.push(...facts.nodes);
+      if (facts.truncated || combinedNodes.length >= 5e3) {
+        isTruncated = true;
+        break;
+      }
+    }
+    return {
+      nodes: combinedNodes.slice(0, 5e3),
+      truncated: isTruncated
     };
   }
 
@@ -723,7 +742,49 @@
       }
       case "RUN_AUDIT": {
         try {
-          const facts = await extractDesignFacts(figma.currentPage);
+          const scope = msg.scope || "PAGE";
+          let facts;
+          let targetName = figma.currentPage.name;
+          if (scope === "SELECTION") {
+            const selection = figma.currentPage.selection;
+            if (selection.length === 0) {
+              figma.ui.postMessage({
+                type: "AUDIT_ERROR",
+                error: "Please select a component or frame on the canvas to audit."
+              });
+              break;
+            }
+            const selected = selection[0];
+            const isComp = selected.type === "COMPONENT" || selected.type === "INSTANCE" || selected.type === "COMPONENT_SET";
+            targetName = `${isComp ? "Component" : "Frame"}: "${selected.name}"`;
+            facts = await extractDesignFacts(selected);
+          } else if (scope === "COMPONENTS") {
+            let findComponents2 = function(parent) {
+              if ("children" in parent && Array.isArray(parent.children)) {
+                for (const child of parent.children) {
+                  if (child.type === "COMPONENT" || child.type === "COMPONENT_SET" || child.type === "INSTANCE") {
+                    componentNodes.push(child);
+                  } else if ("children" in child) {
+                    findComponents2(child);
+                  }
+                }
+              }
+            };
+            var findComponents = findComponents2;
+            const componentNodes = [];
+            findComponents2(figma.currentPage);
+            if (componentNodes.length === 0) {
+              figma.ui.postMessage({
+                type: "AUDIT_ERROR",
+                error: `No components or instances found on "${figma.currentPage.name}". Select a frame or audit the entire page.`
+              });
+              break;
+            }
+            targetName = `Components (${componentNodes.length}) on "${figma.currentPage.name}"`;
+            facts = await extractMultipleNodesFacts(componentNodes);
+          } else {
+            facts = await extractDesignFacts(figma.currentPage);
+          }
           const audit = analyzeAll(facts);
           if (figma.currentPage.name !== "SousArtist Practice") {
             const failedSkills = Object.keys(audit.bySkill).filter(
@@ -749,7 +810,7 @@
           figma.ui.postMessage({
             type: "AUDIT_RESULTS",
             audit,
-            pageName: figma.currentPage.name
+            pageName: targetName
           });
         } catch (err) {
           figma.ui.postMessage({

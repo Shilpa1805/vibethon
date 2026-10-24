@@ -618,11 +618,16 @@
         });
       } else if (tab === 'sim-audit') {
         simBody.innerHTML = `
-          <button style="background:var(--accent); color:#fff; border:none; padding:8px; border-radius:6px; font-weight:600; width:100%;">Audit this page (read-only)</button>
+          <div style="display:flex; background:var(--bg-panel); border:1px solid var(--border-color); border-radius:6px; padding:2px; gap:2px;">
+            <button style="flex:1; background:var(--accent); color:#fff; border:none; padding:4px 6px; border-radius:4px; font-size:10px; font-weight:700;">Entire Page</button>
+            <button style="flex:1; background:none; color:var(--text-sub); border:none; padding:4px 6px; border-radius:4px; font-size:10px; font-weight:600;">Selected Component</button>
+            <button style="flex:1; background:none; color:var(--text-sub); border:none; padding:4px 6px; border-radius:4px; font-size:10px; font-weight:600;">All Components</button>
+          </div>
+          <button style="background:var(--accent); color:#fff; border:none; padding:8px; border-radius:6px; font-weight:600; width:100%;">Audit Entire Page (read-only)</button>
           <div style="font-size:11px; color:var(--text-dim); text-align:center;">Only structural numbers leave your file.</div>
           <div style="background:var(--bg-panel); border:1px solid var(--border-color); border-radius:6px; padding:10px; display:flex; flex-direction:column; gap:6px;">
             <div style="display:flex; justify-content:space-between; font-weight:700;">
-              <span>🌓 Contrast</span>
+              <span>🌓 Contrast (Card Title)</span>
               <span style="color:var(--danger);">1 High</span>
             </div>
             <div style="font-size:11px; color:var(--text-sub);">Ratio 2.14:1 (needs 4.5:1)</div>

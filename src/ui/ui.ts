@@ -45,13 +45,46 @@ if (btnCheckSelection) {
 }
 
 // Audit Tab Logic
+let currentAuditScope: 'PAGE' | 'SELECTION' | 'COMPONENTS' = 'PAGE';
+const scopeButtons = document.querySelectorAll<HTMLButtonElement>('.scope-btn');
 const btnRunAudit = document.getElementById('btn-run-audit') as HTMLButtonElement | null;
 const auditResults = document.getElementById('audit-results');
+
+function getScopeButtonLabel(scope: 'PAGE' | 'SELECTION' | 'COMPONENTS'): string {
+  if (scope === 'SELECTION') return 'Audit Selected Component (read-only)';
+  if (scope === 'COMPONENTS') return 'Audit All Components on Page';
+  return 'Audit Entire Page (read-only)';
+}
+
+scopeButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    scopeButtons.forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    const scope = btn.getAttribute('data-scope') as 'PAGE' | 'SELECTION' | 'COMPONENTS';
+    if (scope) {
+      currentAuditScope = scope;
+      if (btnRunAudit) {
+        btnRunAudit.innerHTML = `
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          ${getScopeButtonLabel(currentAuditScope)}
+        `;
+      }
+    }
+  });
+});
 
 if (btnRunAudit) {
   btnRunAudit.addEventListener('click', () => {
     btnRunAudit.disabled = true;
-    btnRunAudit.textContent = 'Auditing page layers (read-only)...';
+    btnRunAudit.textContent = currentAuditScope === 'SELECTION'
+      ? 'Auditing selected component...'
+      : currentAuditScope === 'COMPONENTS'
+      ? 'Auditing page components...'
+      : 'Auditing page layers (read-only)...';
+
     if (auditResults) {
       auditResults.innerHTML = `
         <div style="text-align:center; padding:24px 0; color:var(--text-secondary);">
@@ -60,7 +93,7 @@ if (btnRunAudit) {
         </div>
       `;
     }
-    parent.postMessage({ pluginMessage: { type: 'RUN_AUDIT' } }, '*');
+    parent.postMessage({ pluginMessage: { type: 'RUN_AUDIT', scope: currentAuditScope } }, '*');
   });
 }
 
@@ -72,7 +105,7 @@ function renderAuditResults(audit: AuditSummary, pageName: string) {
         <circle cx="11" cy="11" r="8"/>
         <line x1="21" y1="21" x2="16.65" y2="16.65"/>
       </svg>
-      Audit this page (read-only)
+      ${getScopeButtonLabel(currentAuditScope)}
     `;
   }
 
@@ -489,7 +522,13 @@ window.onmessage = (event) => {
     case 'AUDIT_ERROR': {
       if (btnRunAudit) {
         btnRunAudit.disabled = false;
-        btnRunAudit.textContent = 'Audit this page (read-only)';
+        btnRunAudit.innerHTML = `
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          ${getScopeButtonLabel(currentAuditScope)}
+        `;
       }
       showToast(msg.error || 'Audit encountered an issue.');
       break;

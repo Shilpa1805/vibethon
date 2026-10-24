@@ -21,6 +21,8 @@ export interface FactNode {
   width?: number;
   height?: number;
   hue?: number | null;            // 0..360, null if grey or non-solid
+  isComponent?: boolean;
+  componentName?: string | null;
 }
 
 export interface DesignFacts {

@@ -3,14 +3,14 @@
 // Move, Measure, Manage - NEVER Make design for the user
 
 /// <reference types="@figma/plugin-typings" />
-import { extractDesignFacts } from './adapters/figma/extract';
+import { extractDesignFacts, extractMultipleNodesFacts } from './adapters/figma/extract';
 import { analyzeAll } from './core/analyzers/index';
 import { buildPracticeFrame, verifyCurrentPractice } from './adapters/figma/practice';
 import { loadLearnerState, saveLearnerState } from './adapters/figma/storage';
 import { advanceLeitnerBox, resetLeitnerOnAuditFailure } from './core/learner/leitner';
 import { recordLessonCompletion } from './core/learner/xp';
 import { getTodayDateString } from './core/learner/state';
-import { SkillId } from './core/types';
+import { DesignFacts, SkillId } from './core/types';
 
 figma.showUI(__html__, { width: 380, height: 640, themeColors: true });
 
@@ -40,7 +40,52 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: any }) => {
 
     case 'RUN_AUDIT': {
       try {
-        const facts = await extractDesignFacts(figma.currentPage);
+        const scope = msg.scope || 'PAGE';
+        let facts: DesignFacts;
+        let targetName = figma.currentPage.name;
+
+        if (scope === 'SELECTION') {
+          const selection = figma.currentPage.selection;
+          if (selection.length === 0) {
+            figma.ui.postMessage({
+              type: 'AUDIT_ERROR',
+              error: 'Please select a component or frame on the canvas to audit.',
+            });
+            break;
+          }
+          const selected = selection[0];
+          const isComp = selected.type === 'COMPONENT' || selected.type === 'INSTANCE' || (selected as any).type === 'COMPONENT_SET';
+          targetName = `${isComp ? 'Component' : 'Frame'}: "${selected.name}"`;
+          facts = await extractDesignFacts(selected);
+        } else if (scope === 'COMPONENTS') {
+          const componentNodes: SceneNode[] = [];
+          function findComponents(parent: PageNode | SceneNode) {
+            if ('children' in parent && Array.isArray(parent.children)) {
+              for (const child of parent.children) {
+                if (child.type === 'COMPONENT' || child.type === 'COMPONENT_SET' || child.type === 'INSTANCE') {
+                  componentNodes.push(child);
+                } else if ('children' in child) {
+                  findComponents(child);
+                }
+              }
+            }
+          }
+          findComponents(figma.currentPage);
+
+          if (componentNodes.length === 0) {
+            figma.ui.postMessage({
+              type: 'AUDIT_ERROR',
+              error: `No components or instances found on "${figma.currentPage.name}". Select a frame or audit the entire page.`,
+            });
+            break;
+          }
+
+          targetName = `Components (${componentNodes.length}) on "${figma.currentPage.name}"`;
+          facts = await extractMultipleNodesFacts(componentNodes);
+        } else {
+          facts = await extractDesignFacts(figma.currentPage);
+        }
+
         const audit = analyzeAll(facts);
 
         // Transfer signal check: if the user failed a skill on their real file, drop to box 0!
@@ -71,7 +116,7 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: any }) => {
         figma.ui.postMessage({
           type: 'AUDIT_RESULTS',
           audit,
-          pageName: figma.currentPage.name,
+          pageName: targetName,
         });
       } catch (err: any) {
         figma.ui.postMessage({

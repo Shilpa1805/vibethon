@@ -138,6 +138,8 @@ export async function extractDesignFacts(rootNode: SceneNode | PageNode): Promis
         ? sceneNode.children.length
         : 0;
 
+      const isComponent = sceneNode.type === 'COMPONENT' || sceneNode.type === 'INSTANCE' || (sceneNode as any).type === 'COMPONENT_SET';
+
       const factNode: FactNode = {
         id: sceneNode.id,
         type: nodeType,
@@ -154,6 +156,8 @@ export async function extractDesignFacts(rootNode: SceneNode | PageNode): Promis
         width: 'width' in sceneNode ? sceneNode.width : undefined,
         height: 'height' in sceneNode ? sceneNode.height : undefined,
         hue: getHslHue(textColor || fillColor),
+        isComponent,
+        componentName: isComponent ? sceneNode.name : null,
       };
 
       nodes.push(factNode);
@@ -172,5 +176,24 @@ export async function extractDesignFacts(rootNode: SceneNode | PageNode): Promis
   return {
     nodes,
     truncated,
+  };
+}
+
+export async function extractMultipleNodesFacts(targetNodes: SceneNode[]): Promise<DesignFacts> {
+  const combinedNodes: FactNode[] = [];
+  let isTruncated = false;
+
+  for (const node of targetNodes) {
+    const facts = await extractDesignFacts(node);
+    combinedNodes.push(...facts.nodes);
+    if (facts.truncated || combinedNodes.length >= 5000) {
+      isTruncated = true;
+      break;
+    }
+  }
+
+  return {
+    nodes: combinedNodes.slice(0, 5000),
+    truncated: isTruncated,
   };
 }
