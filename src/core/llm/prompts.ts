@@ -41,6 +41,21 @@ Rules:
   }
 }
 
+export function buildStructuralFindingQuery(skill: SkillId, measured: Record<string, any>): string {
+  switch (skill) {
+    case 'contrast':
+      return `How do I improve contrast? Measured ratio ${measured?.ratio ?? ''} : 1.`;
+    case 'spacing-grid':
+      return `How do I improve spacing grid? Measured ${measured?.property ?? 'spacing'} ${measured?.value ?? ''}px.`;
+    case 'layer-naming':
+      return `How do I improve layer naming? Measured non-standard naming violation.`;
+    case 'auto-layout':
+      return `How do I improve auto layout? Measured ${measured?.childCount ?? ''} children without auto-layout.`;
+    default:
+      return `How do I improve ${skill}?`;
+  }
+}
+
 export function formatHintPrompt(params: {
   skill: SkillId;
   level: number;
@@ -50,10 +65,24 @@ export function formatHintPrompt(params: {
   expertise?: ExpertiseLevel;
 }): string {
   const expertise = params.expertise || 'intermediate';
+
+  // Strip any layer names or raw text to guarantee Rule 4 (Zero Content Leaks)
+  const safeMeasured: Record<string, number | string | boolean> = {};
+  for (const [k, v] of Object.entries(params.measured || {})) {
+    if (k === 'currentName' || k === 'name' || k === 'text' || k === 'nodeName') continue;
+    safeMeasured[k] = v;
+  }
+
+  const safeExpected: Record<string, number | string | boolean> = {};
+  for (const [k, v] of Object.entries(params.expected || {})) {
+    if (k === 'nodeName' || k === 'name' || k === 'text') continue;
+    safeExpected[k] = v;
+  }
+
   return `Provide a Level ${params.level} coaching hint for the skill "${params.skill}" tailored for a ${expertise} designer.
 CONTEXT NUMBERS:
-- Measured: ${JSON.stringify(params.measured)}
-- Target threshold: ${JSON.stringify(params.expected)}
+- Measured: ${JSON.stringify(safeMeasured)}
+- Target threshold: ${JSON.stringify(safeExpected)}
 - Attempts so far: ${params.attempts}
 - Designer Expertise: ${expertise}
 
@@ -86,7 +115,20 @@ export function formatDiagnosisPrompt(summary: AuditSummary): string {
     const samples = summary.findings
       .filter((f) => f.skill === skill)
       .slice(0, 3)
-      .map((f) => ({ measured: f.measured, expected: f.expected }));
+      .map((f) => {
+        // Strip any layer names or raw text to guarantee Rule 4 (Zero Content Leaks)
+        const safeMeasured: Record<string, any> = {};
+        for (const [k, v] of Object.entries(f.measured || {})) {
+          if (k === 'currentName' || k === 'name' || k === 'text' || k === 'nodeName') continue;
+          safeMeasured[k] = v;
+        }
+        const safeExpected: Record<string, any> = {};
+        for (const [k, v] of Object.entries(f.expected || {})) {
+          if (k === 'nodeName' || k === 'name' || k === 'text') continue;
+          safeExpected[k] = v;
+        }
+        return { measured: safeMeasured, expected: safeExpected };
+      });
 
     anonymizedPayload[skill] = {
       counts: stats,

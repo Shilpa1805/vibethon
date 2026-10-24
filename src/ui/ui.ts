@@ -4,6 +4,8 @@
 import { AuditSummary, Finding, LearnerState, SkillId, ExceptionReason } from '../core/types';
 import { LESSONS, LessonDefinition } from '../core/lessons/lessons';
 import { SousArtistCoach } from '../core/llm/coach';
+import { buildStructuralFindingQuery } from '../core/llm/prompts';
+import { escapeHtml } from './escape';
 
 let learnerState: LearnerState | null = null;
 let activeSkill: SkillId = 'contrast';
@@ -104,9 +106,9 @@ function renderProfileMenu() {
     const isActive = p.id === learnerState!.activeProfileId;
     const contextIcon = p.context === 'team' ? '👥' : p.context === 'freelance' ? '💼' : '🧪';
     return `
-      <div class="menu-item ${isActive ? 'active' : ''}" data-profile-id="${p.id}" title="${p.description}">
-        <strong>${contextIcon} ${p.name}</strong>
-        <small>${p.description}</small>
+      <div class="menu-item ${isActive ? 'active' : ''}" data-profile-id="${escapeHtml(p.id)}" title="${escapeHtml(p.description)}">
+        <strong>${contextIcon} ${escapeHtml(p.name)}</strong>
+        <small>${escapeHtml(p.description)}</small>
       </div>
     `;
   }).join('');
@@ -310,7 +312,7 @@ function renderAuditResults(audit: AuditSummary, pageName: string) {
         <div style="font-size:24px; margin-bottom:6px;">✨</div>
         <div style="font-weight:600; color:var(--success-color); font-size:14px;">Clean Page Audit!</div>
         <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">
-          No contrast, spacing, naming, or auto-layout issues found on "${pageName}".
+          No contrast, spacing, naming, or auto-layout issues found on "${escapeHtml(pageName)}".
         </div>
       </div>
     `;
@@ -329,7 +331,7 @@ function renderAuditResults(audit: AuditSummary, pageName: string) {
   html += `
     <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
       <span style="font-weight:700; font-size:13px;">Found ${audit.totalCount} Gap${audit.totalCount === 1 ? '' : 's'}</span>
-      <span style="font-size:11px; color:var(--text-secondary);">${pageName}</span>
+      <span style="font-size:11px; color:var(--text-secondary);">${escapeHtml(pageName)}</span>
     </div>
   `;
 
@@ -391,16 +393,15 @@ function renderAuditResults(audit: AuditSummary, pageName: string) {
     });
   });
 
-  // Wire "Ask Coach About This" button
+  // Wire "Ask Coach About This" button (Rule 4: structural numbers only, never layer names or text)
   auditResults.querySelectorAll('.btn-ask-about-finding').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const nodeName = btn.getAttribute('data-node-name') || 'layer';
-      const skill = btn.getAttribute('data-skill') || 'design';
-      const summary = btn.getAttribute('data-summary') || '';
+      const skill = (btn.getAttribute('data-skill') || 'contrast') as SkillId;
+      const query = btn.getAttribute('data-query') || buildStructuralFindingQuery(skill, {});
 
       switchTab('coach');
       if (coachInput) {
-        coachInput.value = `How should I improve the ${skill} on layer "${nodeName}"? (${summary})`;
+        coachInput.value = query;
         sendCoachMessage();
       }
     });
@@ -475,7 +476,7 @@ function renderAuditResults(audit: AuditSummary, pageName: string) {
         };
         card.innerHTML = `
           <div style="padding:10px 14px; font-size:11px; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center;">
-            <span>✓ Exception recorded: <strong>${reasonLabels[reason]}</strong>${customNote ? ` ("${customNote}")` : ''}</span>
+            <span>✓ Exception recorded: <strong>${reasonLabels[reason]}</strong>${customNote ? ` ("${escapeHtml(customNote)}")` : ''}</span>
             <span style="font-size:10px; color:var(--text-dim);">(Exempt from audit)</span>
           </div>
         `;
@@ -518,7 +519,7 @@ function renderFindingItem(f: Finding): string {
     measuredStr = `${f.measured.property}: ${f.measured.value}px (use multiple of 4/8, e.g. ${f.expected.recommended8pt}px)`;
     layerIcon = '📐';
   } else if (f.skill === 'layer-naming') {
-    measuredStr = `Name: "${f.measured.currentName}"`;
+    measuredStr = `Name: "${escapeHtml(f.measured.currentName)}"`;
     layerIcon = '🏷️';
   } else if (f.skill === 'auto-layout') {
     measuredStr = `${f.measured.childCount} children without Auto Layout`;
@@ -526,7 +527,7 @@ function renderFindingItem(f: Finding): string {
   }
 
   const severityColor = f.severity === 'high' ? 'var(--danger-color)' : f.severity === 'medium' ? 'var(--warning-color)' : 'var(--text-secondary)';
-  const nodeTitle = f.nodeName ? `"${f.nodeName}"` : 'Selected Layer';
+  const nodeTitle = f.nodeName ? `"${escapeHtml(f.nodeName)}"` : 'Selected Layer';
   const expertise = learnerState?.expertiseLevel || 'intermediate';
 
   // Skill-level trade-off explanation
@@ -537,6 +538,7 @@ function renderFindingItem(f: Finding): string {
     'auto-layout': 'Auto Layout guarantees multi-device responsive wrapping and padding. Fixed frames should be reserved solely for freeform illustrations or non-responsive icons.',
   };
   const tradeoffText = f.tradeoffTip || skillTradeoffs[f.skill] || '';
+  const structuralQuery = buildStructuralFindingQuery(f.skill, f.measured);
 
   // Render body based on expertise level
   let detailsBody = '';
@@ -546,19 +548,19 @@ function renderFindingItem(f: Finding): string {
     detailsBody = `
       <div style="margin-top:8px; display:flex; flex-direction:column; gap:6px;">
         <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-primary); padding:6px 10px; border-radius:4px; border:1px solid var(--border-color); font-size:11px;">
-          <div><strong style="color:var(--text-secondary);">Measured:</strong> <span style="color:var(--text-primary); font-family:monospace;">${JSON.stringify(f.measured).replace(/[{}"]/g, '')}</span></div>
-          <div><strong style="color:var(--text-secondary);">Expected:</strong> <span style="color:var(--accent-color); font-family:monospace;">${JSON.stringify(f.expected).replace(/[{}"]/g, '')}</span></div>
+          <div><strong style="color:var(--text-secondary);">Measured:</strong> <span style="color:var(--text-primary); font-family:monospace;">${escapeHtml(JSON.stringify(f.measured).replace(/[{}"]/g, ''))}</span></div>
+          <div><strong style="color:var(--text-secondary);">Expected:</strong> <span style="color:var(--accent-color); font-family:monospace;">${escapeHtml(JSON.stringify(f.expected).replace(/[{}"]/g, ''))}</span></div>
         </div>
 
         ${tradeoffText ? `
           <div style="font-size:11px; color:var(--text-muted); line-height:1.4; padding:2px 4px;">
-            ⚖️ <strong style="color:var(--text-secondary);">Trade-off:</strong> ${tradeoffText}
+            ⚖️ <strong style="color:var(--text-secondary);">Trade-off:</strong> ${escapeHtml(tradeoffText)}
           </div>
         ` : ''}
 
         ${f.shortcutTip ? `
           <div style="font-size:10px; color:var(--text-muted); padding:2px 4px;">
-            ⚡ <strong>Shortcut:</strong> ${f.shortcutTip}
+            ⚡ <strong>Shortcut:</strong> ${escapeHtml(f.shortcutTip)}
           </div>
         ` : ''}
       </div>
@@ -572,7 +574,7 @@ function renderFindingItem(f: Finding): string {
             🔍 Diagnostic
           </div>
           <div style="color:var(--text-primary); font-size:12px; line-height:1.4;">
-            ${f.summary || measuredStr}
+            ${escapeHtml(f.summary || measuredStr)}
           </div>
         </div>
 
@@ -582,21 +584,21 @@ function renderFindingItem(f: Finding): string {
               🛠️ Action Steps
             </div>
             <ol style="padding-left:18px; margin:0; font-size:11px; line-height:1.5; color:var(--text-primary);">
-              ${f.actionSteps.slice(0, 3).map(step => `<li>${step}</li>`).join('')}
+              ${f.actionSteps.slice(0, 3).map(step => `<li>${escapeHtml(step)}</li>`).join('')}
             </ol>
           </div>
         ` : ''}
 
         ${tradeoffText ? `
           <div style="font-size:11px; color:var(--text-muted); line-height:1.4;">
-            ⚖️ <strong>Trade-off:</strong> ${tradeoffText}
+            ⚖️ <strong>Trade-off:</strong> ${escapeHtml(tradeoffText)}
           </div>
         ` : ''}
 
         ${f.shortcutTip ? `
           <div style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
             <span>⚡</span>
-            <span><strong>Shortcut:</strong> ${f.shortcutTip}</span>
+            <span><strong>Shortcut:</strong> ${escapeHtml(f.shortcutTip)}</span>
           </div>
         ` : ''}
       </div>
@@ -610,7 +612,7 @@ function renderFindingItem(f: Finding): string {
             🔍 Component Diagnostic
           </div>
           <div style="color:var(--text-primary); font-size:12px; line-height:1.4;">
-            ${f.summary || measuredStr}
+            ${escapeHtml(f.summary || measuredStr)}
           </div>
         </div>
 
@@ -620,7 +622,7 @@ function renderFindingItem(f: Finding): string {
               💡 Why It Matters for This Component
             </div>
             <div style="color:var(--text-muted); font-size:11px; line-height:1.4;">
-              ${f.whyItMatters}
+              ${escapeHtml(f.whyItMatters)}
             </div>
           </div>
         ` : ''}
@@ -631,21 +633,21 @@ function renderFindingItem(f: Finding): string {
               🛠️ Guided Fix Steps (Do in Figma)
             </div>
             <ol style="padding-left:18px; margin:0; font-size:11px; line-height:1.5; color:var(--text-primary);">
-              ${f.actionSteps.map(step => `<li>${step}</li>`).join('')}
+              ${f.actionSteps.map(step => `<li>${escapeHtml(step)}</li>`).join('')}
             </ol>
           </div>
         ` : ''}
 
         ${tradeoffText ? `
           <div style="font-size:11px; color:var(--text-muted); line-height:1.4;">
-            ⚖️ <strong>Design Trade-off:</strong> ${tradeoffText}
+            ⚖️ <strong>Design Trade-off:</strong> ${escapeHtml(tradeoffText)}
           </div>
         ` : ''}
 
         ${f.shortcutTip ? `
           <div style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
             <span>⚡</span>
-            <span><strong>Shortcut:</strong> ${f.shortcutTip}</span>
+            <span><strong>Shortcut:</strong> ${escapeHtml(f.shortcutTip)}</span>
           </div>
         ` : ''}
       </div>
@@ -653,69 +655,69 @@ function renderFindingItem(f: Finding): string {
   }
 
   return `
-    <div class="finding-card" id="card-${f.id}" style="background:var(--bg-primary); border:1px solid var(--border-color); border-radius:6px; overflow:hidden; font-size:12px; transition:border-color 0.2s ease;">
+    <div class="finding-card" id="card-${escapeHtml(f.id)}" style="background:var(--bg-primary); border:1px solid var(--border-color); border-radius:6px; overflow:hidden; font-size:12px; transition:border-color 0.2s ease;">
       <!-- Header Row -->
-      <div style="padding:10px 12px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" class="finding-header" data-id="${f.id}">
+      <div style="padding:10px 12px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" class="finding-header" data-id="${escapeHtml(f.id)}">
         <div style="display:flex; align-items:center; gap:8px; min-width:0; flex:1;">
           <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${severityColor}; flex-shrink:0;"></span>
           <span style="font-size:14px; flex-shrink:0;">${layerIcon}</span>
           <div style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
             <strong style="color:var(--text-primary); font-size:12px;">${nodeTitle}</strong>
-            <span style="color:var(--text-secondary); font-size:11px; margin-left:4px;">${measuredStr}</span>
+            <span style="color:var(--text-secondary); font-size:11px; margin-left:4px;">${escapeHtml(measuredStr)}</span>
           </div>
         </div>
 
         <div style="display:flex; align-items:center; gap:6px; flex-shrink:0; margin-left:8px;">
-          <button class="btn-inspect" data-node-id="${f.nodeId}" style="background:var(--bg-hover); border:1px solid var(--border-color); color:var(--accent-color); padding:3px 8px; border-radius:4px; cursor:pointer; font-size:11px; font-weight:600;" title="Highlight this layer in Figma">
+          <button class="btn-inspect" data-node-id="${escapeHtml(f.nodeId)}" style="background:var(--bg-hover); border:1px solid var(--border-color); color:var(--accent-color); padding:3px 8px; border-radius:4px; cursor:pointer; font-size:11px; font-weight:600;" title="Highlight this layer in Figma">
             🎯 Show in File
           </button>
-          <span class="finding-toggle-arrow" id="arrow-${f.id}" style="font-size:10px; color:var(--text-muted); width:14px; text-align:center;">▼</span>
+          <span class="finding-toggle-arrow" id="arrow-${escapeHtml(f.id)}" style="font-size:10px; color:var(--text-muted); width:14px; text-align:center;">▼</span>
         </div>
       </div>
 
       <!-- Expandable Component Betterment Body -->
-      <div class="finding-details" id="details-${f.id}" style="padding:0 12px 12px; border-top:1px solid var(--border-color); background:var(--bg-card); display:flex; flex-direction:column; gap:8px;">
+      <div class="finding-details" id="details-${escapeHtml(f.id)}" style="padding:0 12px 12px; border-top:1px solid var(--border-color); background:var(--bg-card); display:flex; flex-direction:column; gap:8px;">
         ${detailsBody}
 
         <!-- Direct Actions -->
         <div style="display:flex; gap:6px; margin-top:4px; padding-top:6px; border-top:1px solid var(--border-color); flex-wrap:wrap; align-items:center;">
-          <button class="btn-recheck-finding btn-primary" data-node-id="${f.nodeId}" data-id="${f.id}" style="padding:4px 8px; font-size:11px; font-weight:600;" title="Re-check this component right now">
+          <button class="btn-recheck-finding btn-primary" data-node-id="${escapeHtml(f.nodeId)}" data-id="${escapeHtml(f.id)}" style="padding:4px 8px; font-size:11px; font-weight:600;" title="Re-check this component right now">
             ↻ Re-check
           </button>
           ${expertise === 'beginner' ? `
-            <button class="btn-ask-about-finding btn-secondary" data-node-name="${f.nodeName || 'layer'}" data-skill="${f.skill}" data-summary="${f.summary || measuredStr}" style="padding:4px 8px; font-size:11px;">
+            <button class="btn-ask-about-finding btn-secondary" data-skill="${escapeHtml(f.skill)}" data-query="${escapeHtml(structuralQuery)}" style="padding:4px 8px; font-size:11px;">
               💬 Ask Coach
             </button>
           ` : ''}
-          <button class="btn-open-exception btn-secondary" data-id="${f.id}" style="padding:4px 8px; font-size:11px;" title="Record intentional exception or defer">
+          <button class="btn-open-exception btn-secondary" data-id="${escapeHtml(f.id)}" style="padding:4px 8px; font-size:11px;" title="Record intentional exception or defer">
             ✓ Exception
           </button>
-          <button class="btn-study-sandbox btn-secondary" data-skill="${f.skill}" data-node-name="${f.nodeName || ''}" style="padding:4px 8px; font-size:11px;" title="Open isolated 2-minute practice lesson">
+          <button class="btn-study-sandbox btn-secondary" data-skill="${escapeHtml(f.skill)}" data-node-name="${escapeHtml(f.nodeName || '')}" style="padding:4px 8px; font-size:11px;" title="Open isolated 2-minute practice lesson">
             📚 Practice
           </button>
         </div>
 
         <!-- Inline Exception Selector (Hidden until clicked) -->
-        <div class="exception-box" id="exception-box-${f.id}" style="display:none; background:var(--bg-primary); border:1px solid var(--border-color); border-radius:6px; padding:10px; margin-top:4px;">
+        <div class="exception-box" id="exception-box-${escapeHtml(f.id)}" style="display:none; background:var(--bg-primary); border:1px solid var(--border-color); border-radius:6px; padding:10px; margin-top:4px;">
           <div style="font-size:11px; font-weight:700; color:var(--text-primary); margin-bottom:6px;">Record Design Exception</div>
           <div style="display:flex; flex-direction:column; gap:4px; font-size:11px; color:var(--text-secondary);">
             <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-              <input type="radio" name="reason-${f.id}" value="intentional" checked />
+              <input type="radio" name="reason-${escapeHtml(f.id)}" value="intentional" checked />
               <span><strong>Intentional design choice</strong> (brand nuance / optical fit)</span>
             </label>
             <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-              <input type="radio" name="reason-${f.id}" value="not-applicable" />
+              <input type="radio" name="reason-${escapeHtml(f.id)}" value="not-applicable" />
               <span><strong>Not applicable</strong> (decorative illustration / canvas scratch)</span>
             </label>
             <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-              <input type="radio" name="reason-${f.id}" value="remind-later" />
+              <input type="radio" name="reason-${escapeHtml(f.id)}" value="remind-later" />
               <span><strong>Remind me later</strong> (defer to backlog)</span>
             </label>
           </div>
-          <input type="text" id="exception-note-${f.id}" placeholder="Optional custom note (e.g. approved by lead)..." style="margin-top:6px; width:100%; box-sizing:border-box; background:var(--bg-secondary); border:1px solid var(--border-color); color:var(--text-primary); padding:4px 8px; border-radius:4px; font-size:11px;" />
+          <input type="text" id="exception-note-${escapeHtml(f.id)}" placeholder="Optional custom note (e.g. approved by lead)..." style="margin-top:6px; width:100%; box-sizing:border-box; background:var(--bg-secondary); border:1px solid var(--border-color); color:var(--text-primary); padding:4px 8px; border-radius:4px; font-size:11px;" />
           <div style="display:flex; gap:6px; justify-content:flex-end; margin-top:8px;">
-            <button class="btn-secondary btn-cancel-exception" data-id="${f.id}" style="padding:3px 8px; font-size:10px;">Cancel</button>
-            <button class="btn-primary btn-confirm-exception" data-id="${f.id}" data-node-id="${f.nodeId}" style="padding:3px 10px; font-size:10px;">Save Exception</button>
+            <button class="btn-secondary btn-cancel-exception" data-id="${escapeHtml(f.id)}" style="padding:3px 8px; font-size:10px;">Cancel</button>
+            <button class="btn-primary btn-confirm-exception" data-id="${escapeHtml(f.id)}" data-node-id="${escapeHtml(f.nodeId)}" style="padding:3px 10px; font-size:10px;">Save Exception</button>
           </div>
         </div>
       </div>
@@ -762,7 +764,7 @@ export function renderPathTab() {
         <div>
           <strong style="color:var(--accent-color);">🎯 Contextual Practice Challenge:</strong>
           <div style="color:var(--text-secondary); margin-top:2px;">
-            Targeting flaw on "${pendingPracticeContext.nodeName || 'layer'}" (${LESSONS[activeSkill].title}). Fix it safely on the practice canvas first!
+            Targeting flaw on "${escapeHtml(pendingPracticeContext.nodeName || 'layer')}" (${escapeHtml(LESSONS[activeSkill].title)}). Fix it safely on the practice canvas first!
           </div>
         </div>
         <button id="btn-dismiss-context-challenge" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:14px; padding:2px 4px;">✕</button>
@@ -966,9 +968,9 @@ async function renderHintBox() {
       expected: { minRatio: 4.5 },
       attempts: hintsUsedInSession,
     });
-    box.innerHTML = `<strong>Level ${currentHintLevel}:</strong> ${hintRes.hint} ${hintRes.offline ? '<span style="font-size:10px; color:var(--text-muted);">(offline hint)</span>' : ''}`;
+    box.innerHTML = `<strong>Level ${currentHintLevel}:</strong> ${escapeHtml(hintRes.hint)} ${hintRes.offline ? '<span style="font-size:10px; color:var(--text-muted);">(offline hint)</span>' : ''}`;
   } else {
-    box.innerHTML = `<strong>Level 4 (Worked Example):</strong> ${lesson.workedExample}`;
+    box.innerHTML = `<strong>Level 4 (Worked Example):</strong> ${escapeHtml(lesson.workedExample)}`;
   }
 
   if (btn) {
@@ -1013,7 +1015,7 @@ async function sendCoachMessage() {
   if (result.intent === 'generate_design') {
     coachBubble.innerHTML = `
       <div style="font-weight:700; color:var(--accent-color); font-size:11px; margin-bottom:4px; text-transform:uppercase;">Coaching Boundary</div>
-      <div>${result.response}</div>
+      <div>${escapeHtml(result.response)}</div>
     `;
   } else {
     coachBubble.textContent = result.response;
@@ -1064,30 +1066,30 @@ function renderRelayTab(state: LearnerState) {
   relayList.innerHTML = activeNotes.map((note) => {
     const color = topicColors[note.topic] || 'var(--accent-color)';
     return `
-      <div class="relay-card" data-note-id="${note.id}">
+      <div class="relay-card" data-note-id="${escapeHtml(note.id)}">
         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
           <div style="display:flex; flex-direction:column; gap:4px; flex:1;">
             <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-              <span class="relay-topic-tag" style="background:${color}22; color:${color};">${note.topic}</span>
-              ${note.targetScope ? `<span style="font-size:10px; color:var(--text-muted); background:var(--bg-hover); padding:2px 6px; border-radius:4px;">${note.targetScope}</span>` : ''}
+              <span class="relay-topic-tag" style="background:${color}22; color:${color};">${escapeHtml(note.topic)}</span>
+              ${note.targetScope ? `<span style="font-size:10px; color:var(--text-muted); background:var(--bg-hover); padding:2px 6px; border-radius:4px;">${escapeHtml(note.targetScope)}</span>` : ''}
             </div>
-            <strong style="font-size:12px; color:var(--text-primary);">${note.title}</strong>
+            <strong style="font-size:12px; color:var(--text-primary);">${escapeHtml(note.title)}</strong>
           </div>
-          <button class="btn-dismiss-relay" data-note-id="${note.id}" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:14px; padding:2px; flex-shrink:0;" title="Dismiss note">✕</button>
+          <button class="btn-dismiss-relay" data-note-id="${escapeHtml(note.id)}" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:14px; padding:2px; flex-shrink:0;" title="Dismiss note">✕</button>
         </div>
 
-        <div style="font-size:12px; color:var(--text-secondary); line-height:1.4;">${note.guideline}</div>
+        <div style="font-size:12px; color:var(--text-secondary); line-height:1.4;">${escapeHtml(note.guideline)}</div>
 
         ${note.tradeoffReason ? `
           <div style="font-size:11px; color:var(--text-muted); display:flex; gap:6px; align-items:flex-start; background:var(--bg-primary); padding:6px 8px; border-radius:5px; border:1px solid var(--border-color);">
             <span style="flex-shrink:0;">⚖️</span>
-            <span><strong>Why:</strong> ${note.tradeoffReason}</span>
+            <span><strong>Why:</strong> ${escapeHtml(note.tradeoffReason)}</span>
           </div>
         ` : ''}
 
         <div style="font-size:10px; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center;">
-          <span>by ${note.author}</span>
-          <span>${note.createdAt}</span>
+          <span>by ${escapeHtml(note.author)}</span>
+          <span>${escapeHtml(note.createdAt)}</span>
         </div>
       </div>
     `;
@@ -1185,7 +1187,7 @@ function renderUnsupportedNotice(audit: AuditSummary) {
       <div style="font-weight:700; margin-bottom:4px; color:var(--text-secondary);">ℹ️ ${items.length} layer${items.length !== 1 ? 's' : ''} skipped (unsupported fill type)</div>
       <div style="font-size:10px; color:var(--text-muted); line-height:1.4;">
         Gradient, image, or mixed fills cannot be analyzed for contrast offline.
-        ${items.slice(0, 3).map((i) => `<br>• "${i.nodeName}"`).join('')}
+        ${items.slice(0, 3).map((i) => `<br>• "${escapeHtml(i.nodeName)}"`).join('')}
         ${items.length > 3 ? `<br>• …and ${items.length - 3} more` : ''}
       </div>
     </div>
@@ -1234,11 +1236,11 @@ window.onmessage = (event) => {
               <span style="font-size:11px; font-weight:700; color:var(--success-color);">+10 XP</span>
             </div>
             <div style="font-size:11px; color:var(--text-secondary); margin-top:2px;">
-              ${msg.message}
+              ${escapeHtml(msg.message)}
             </div>
           </div>
         `;
-        showToast(`✓ "${msg.nodeName}" verified! Auto Layout is active.`);
+        showToast(`✓ "${escapeHtml(msg.nodeName)}" verified! Auto Layout is active.`);
       } else if (card && !msg.passed) {
         const recheckBtn = card.querySelector('.btn-recheck-finding') as HTMLButtonElement | null;
         if (recheckBtn) recheckBtn.textContent = '↻ Re-check';
@@ -1283,7 +1285,7 @@ window.onmessage = (event) => {
                 <span>✓ Verified by Rule Engine!</span>
                 <span>+${msg.result.earnedXp || 10} XP</span>
               </div>
-              <div style="font-size:12px; margin-top:4px;">${msg.result.message}</div>
+              <div style="font-size:12px; margin-top:4px;">${escapeHtml(msg.result.message)}</div>
             </div>
           `;
           if (msg.result.state) {
@@ -1297,7 +1299,7 @@ window.onmessage = (event) => {
               <div style="font-weight:700; color:var(--warning-color); font-size:13px;">
                 Needs Adjustment
               </div>
-              <div style="font-size:12px; margin-top:4px;">${msg.result.message}</div>
+              <div style="font-size:12px; margin-top:4px;">${escapeHtml(msg.result.message)}</div>
             </div>
           `;
         }
