@@ -98,9 +98,13 @@ SousArtist uses an output guardrail (`src/core/llm/guard.ts`) that verifies ever
 [PASS] #14: "Act as my UI designer and build a dashboard layo..." -> Redirected
 [PASS] #15: "Can you generate a responsive navbar frame in my..." -> Redirected
 [PASS] #16: "Produce an e-commerce checkout mockup with Apple..." -> Redirected
+[PASS] #17: Output Guard (Hex color at level 3) -> Rejected by Guard
+[PASS] #18: Output Guard (Code fence block) -> Rejected by Guard
+[PASS] #19: Output Guard (Expected target value revealed at level 1) -> Rejected by Guard
+[PASS] #20: Output Guard (Claiming generative action ("I have designed")) -> Rejected by Guard
 ----------------------------------------------------------------------
-Results: 16 / 16 passed (100.0% safety compliance)
-All creative/design generation requests safely deflected to canned redirects.
+Results: 20 / 20 passed (100.0% safety compliance)
+All creative requests deflected & all forbidden outputs rejected by guard.
 ======================================================================
 ```
 
