@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SousArtist — Non-Generative Design Coach (Simulator & Spec)</title>
+  <style>
+    :root {
+      --bg-page: #0f1117;
+      --bg-panel: #161922;
+      --bg-card: #1f2330;
+      --bg-card-hover: #282d3d;
+      --border-color: #2f3547;
+      --text-main: #f3f4f6;
+      --text-sub: #9ca3af;
+      --text-dim: #6b7280;
+      --accent: #6366f1;
+      --accent-hover: #4f46e5;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --focus-ring: #818cf8;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    [data-theme="light"] {
+      --bg-page: #f8fafc;
+      --bg-panel: #ffffff;
+      --bg-card: #f1f5f9;
+      --bg-card-hover: #e2e8f0;
+      --border-color: #cbd5e1;
+      --text-main: #0f172a;
+      --text-sub: #475569;
+      --text-dim: #64748b;
+      --accent: #4f46e5;
+      --accent-hover: #4338ca;
+      --focus-ring: #4f46e5;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font);
+      background: var(--bg-page);
+      color: var(--text-main);
+      line-height: 1.6;
+      padding: 0 16px 80px;
+    }
+
+    header.site-header {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px 0 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 20px;
+      font-weight: 800;
+    }
+
+    .theme-toggle {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    main {
+      max-width: 1100px;
+      margin: 32px auto 0;
+      display: flex;
+      flex-direction: column;
+      gap: 56px;
+    }
+
+    /* Hero Section */
+    .hero {
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(99, 102, 241, 0.15);
+      color: var(--accent);
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .hero h1 {
+      font-size: 38px;
+      font-weight: 900;
+      line-height: 1.2;
+      max-width: 760px;
+      letter-spacing: -0.5px;
+    }
+
+    .hero p {
+      font-size: 16px;
+      color: var(--text-sub);
+      max-width: 640px;
+    }
+
+    .pills-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      margin-top: 8px;
+    }
+
+    .core-pill {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .core-pill.neg {
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+
+    /* Live Simulator Layout */
+    .sim-container {
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      gap: 24px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    }
+
+    @media (max-width: 860px) {
+      .sim-container {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Plugin Mockup Inside Sim */
+    .plugin-window {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: 580px;
+    }
+
+    .plugin-nav {
+      display: flex;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .plugin-tab-btn {
+      flex: 1;
+      padding: 10px 0;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--text-sub);
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .plugin-tab-btn.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+      background: var(--bg-card);
+    }
+
+    .plugin-body {
+      flex: 1;
+      padding: 14px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      font-size: 13px;
+    }
+
+    /* Canvas Mockup */
+    .canvas-view {
+      background: var(--bg-page);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .canvas-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-sub);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .practice-frame-card {
+      background: #ffffff;
+      color: #111827;
+      border-radius: 8px;
+      padding: 20px;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+      transition: all 0.2s ease;
+    }
+
+    /* Interactive Output Guard */
+    .guard-box {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .test-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .test-btn:hover {
+      background: var(--bg-card-hover);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th, td {
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    th {
+      color: var(--text-sub);
+      font-size: 11px;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    button:focus-visible, input:focus-visible {
+      outline: 2px solid var(--focus-ring);
+      outline-offset: 2px;
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="brand">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+        <line x1="9" y1="9" x2="9.01" y2="9"/>
+        <line x1="15" y1="9" x2="15.01" y2="9"/>
+      </svg>
+      <span>SousArtist</span>
+      <span style="font-size:12px; background:rgba(99,102,241,0.2); color:var(--accent); padding:2px 8px; border-radius:12px;">Simulation & Spec</span>
+    </div>
+    <button class="theme-toggle" id="theme-btn" aria-label="Toggle light and dark theme">🌓 Theme</button>
+  </header>
+
+  <main>
+    <!-- Section 1: Hero -->
+    <section class="hero">
+      <div class="hero-badge">AI For Assisting Creativity • Figma Plugin</div>
+      <h1>Coaching New Designers Duolingo-Style From Their Own Files</h1>
+      <p>
+        SousArtist reads your real layers (read-only), measures them against objective WCAG and grid rules, and turns gaps into personal hands-on practice. You do the work, the rule engine verifies it, and the AI never touches your design.
+      </p>
+      <div class="pills-row">
+        <span class="core-pill">Move</span>
+        <span class="core-pill">Measure</span>
+        <span class="core-pill">Manage</span>
+        <span class="core-pill neg">Make (Never)</span>
+      </div>
+    </section>
+
+    <!-- Section 2: Live Simulator -->
+    <section>
+      <div style="margin-bottom:12px;">
+        <h2 style="font-size:20px; font-weight:800;">Interactive Simulator</h2>
+        <p style="font-size:13px; color:var(--text-sub);">
+          Simulates the Figma plugin window and practice canvas. Adjust values directly on the canvas to see deterministic verification.
+        </p>
+      </div>
+
+      <div class="sim-container">
+        <!-- Plugin Window Mockup -->
+        <div class="plugin-window">
+          <div style="background:var(--bg-panel); padding:10px 14px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
+            <strong style="font-size:13px;">SousArtist Panel</strong>
+            <span style="font-size:11px; font-weight:700; color:var(--accent);" id="sim-xp-display">⚡ 15 XP • 🔥 1d</span>
+          </div>
+
+          <div class="plugin-nav" role="tablist">
+            <button class="plugin-tab-btn active" data-tab="sim-path">Path</button>
+            <button class="plugin-tab-btn" data-tab="sim-audit">Audit</button>
+            <button class="plugin-tab-btn" data-tab="sim-coach">Coach</button>
+            <button class="plugin-tab-btn" data-tab="sim-craft">Craft</button>
+          </div>
+
+          <div class="plugin-body" id="sim-body">
+            <!-- Simulated Content Loaded Dynamically -->
+          </div>
+        </div>
+
+        <!-- Canvas Mockup -->
+        <div class="canvas-view">
+          <div class="canvas-title">
+            <span>Figma Canvas: "SousArtist Practice"</span>
+            <span style="font-size:11px; background:rgba(16,185,129,0.15); color:var(--success); padding:2px 8px; border-radius:4px;">Read-Only Sandbox</span>
+          </div>
+
+          <div class="practice-frame-card" id="sim-canvas-card">
+            <div id="canvas-card-title" style="font-size:18px; font-weight:700; color:#111827; margin-bottom:8px;">
+              Readability Check
+            </div>
+            <div id="canvas-card-body" style="font-size:14px; color:#b0b0b0; line-height:1.4;">
+              This description text has poor contrast. Use the slider below to darken it until it meets WCAG AA (4.5:1).
+            </div>
+          </div>
+
+          <!-- Controls for Simulator -->
+          <div style="background:var(--bg-card); padding:14px; border-radius:8px; border:1px solid var(--border-color); display:flex; flex-direction:column; gap:10px;">
+            <strong style="font-size:12px;">Simulated Figma Fill / Spacing Controls:</strong>
+            <div style="display:flex; align-items:center; gap:12px; font-size:12px;">
+              <label for="color-slider" style="width:110px;">Text Darkness:</label>
+              <input type="range" id="color-slider" min="0" max="255" value="176" style="flex:1;">
+              <span id="color-hex-val" style="font-family:monospace; font-size:12px;">#B0B0B0</span>
+            </div>
+            <div style="font-size:11px; color:var(--text-sub);">
+              Current Contrast Ratio: <strong id="sim-ratio-live" style="color:var(--danger);">2.14:1</strong> (Target: >= 4.5:1)
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 3: Interactive Output Guard Playground -->
+    <section>
+      <div style="margin-bottom:12px;">
+        <h2 style="font-size:20px; font-weight:800;">Non-Generative Output Guard Playground</h2>
+        <p style="font-size:13px; color:var(--text-sub);">
+          Every AI response must pass deterministic guardrails (no code fences, no HTML, no hex at levels 1-2, under 70 words, no creative design). Test adversarial prompts below:
+        </p>
+      </div>
+
+      <div class="guard-box">
+        <div style="display:flex; gap:8px;">
+          <input type="text" id="guard-input" placeholder="Type prompt (e.g. 'design me a login page' or 'write the CSS for a button')" style="flex:1; background:var(--bg-card); border:1px solid var(--border-color); color:var(--text-main); padding:8px 12px; border-radius:6px; font-size:13px;">
+          <button id="guard-test-btn" style="background:var(--accent); color:#fff; border:none; padding:8px 16px; border-radius:6px; font-weight:600; cursor:pointer;">Test Guard</button>
+        </div>
+
+        <div style="display:flex; flex-wrap:wrap; gap:6px;">
+          <button class="test-btn" data-prompt="Design me a modern login page with a hero section.">Prompt 1: "Design me a modern login page..."</button>
+          <button class="test-btn" data-prompt="Write the CSS for my button.">Prompt 2: "Write the CSS for my button..."</button>
+          <button class="test-btn" data-prompt="What exact hex should I use for AA?">Prompt 3: "What exact hex should I use?"</button>
+          <button class="test-btn" data-prompt="Explain how the 8pt grid helps visual hierarchy.">Prompt 4: "Explain the 8pt grid concept"</button>
+        </div>
+
+        <div id="guard-result-display" style="background:var(--bg-card); border:1px solid var(--border-color); padding:12px; border-radius:6px; font-size:12px; line-height:1.4;">
+          Click a prompt above or type a request to observe how SousArtist enforces the Move/Measure/Manage boundary.
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 4: Four-Skill Table -->
+    <section>
+      <div style="margin-bottom:12px;">
+        <h2 style="font-size:20px; font-weight:800;">Deterministic Rule Engine Breakdown</h2>
+        <p style="font-size:13px; color:var(--text-sub);">
+          Four core skills measured with fixed mathematical formulas. Zero hallucination.
+        </p>
+      </div>
+
+      <div style="overflow-x:auto; background:var(--bg-panel); border:1px solid var(--border-color); border-radius:10px;">
+        <table>
+          <thead>
+            <tr>
+              <th>Skill</th>
+              <th>Deterministic Formula</th>
+              <th>Threshold</th>
+              <th>Shortcut Tip</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Color Contrast</strong></td>
+              <td>WCAG 2.1 relative luminance: <code>L = 0.2126R + 0.7152G + 0.0722B</code> (linearized)</td>
+              <td>4.5:1 (Normal) / 3.0:1 (Large)</td>
+              <td>Eyedropper <code>I</code></td>
+            </tr>
+            <tr>
+              <td><strong>Spacing Grid</strong></td>
+              <td><code>itemSpacing % 4 === 0</code> and <code>padding % 4 === 0</code></td>
+              <td>Multiples of 4 (preferred 8)</td>
+              <td>Nudge <code>Shift + Arrow</code></td>
+            </tr>
+            <tr>
+              <td><strong>Layer Naming</strong></td>
+              <td>Regex: <code>/^(Frame|Group|Rectangle|Ellipse|Vector|Line)\s?\d*$/i</code></td>
+              <td>Zero default names</td>
+              <td>Rename <code>Cmd/Ctrl + R</code></td>
+            </tr>
+            <tr>
+              <td><strong>Auto Layout</strong></td>
+              <td><code>childCount >= 2 && layoutMode === 'NONE'</code></td>
+              <td>Horizontal / Vertical</td>
+              <td>Auto layout <code>Shift + A</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Section 5: Verified Evidence List -->
+    <section>
+      <div style="margin-bottom:12px;">
+        <h2 style="font-size:20px; font-weight:800;">Verified Research Basis (Section 15)</h2>
+        <p style="font-size:13px; color:var(--text-sub);">
+          Academic citations verified on 24 Oct 2026. Explicitly documenting what we cite and what we do not claim.
+        </p>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:12px; font-size:13px;">
+        <div class="guard-box">
+          <strong>1. Haase, J. and Pokutta, S. (2024)</strong> <em>Human-AI Co-Creativity: Exploring Synergies Across Levels of Creative Collaboration</em>. arXiv:2411.12527.
+          <div style="color:var(--text-sub); margin-top:4px;">
+            <strong>What we take:</strong> The 4-level vocabulary (Digital Pen, AI Task Specialist, AI Assistant, AI Co-Creator). SousArtist operates strictly as an AI Assistant coaching human agency.<br>
+            <strong>Do not claim:</strong> That generative AI inherently harms creative agency or joy.
+          </div>
+        </div>
+
+        <div class="guard-box">
+          <strong>2. de Waal, A. et al. (2025)</strong> <em>Therapeutic Approaches for the Prevention of Upper Limb Repetitive Strain Injuries in Work-Related Computer Use</em>. Journal of Occupational Rehabilitation 35(2):234-267.
+          <div style="color:var(--text-sub); margin-top:4px;">
+            <strong>What we take:</strong> 58 included studies on computer workstation interventions.<br>
+            <strong>Do not claim:</strong> That shortcut learning or coaching reduces RSI; no clinical strain claims are made.
+          </div>
+        </div>
+
+        <div class="guard-box">
+          <strong>3. Alimin, S. R. et al. (2025)</strong> <em>Touch and Gesture-Based Interfaces in Creative Workflows: A Review</em>. Malaysian J ICT 10(2).
+          <div style="color:var(--text-sub); margin-top:4px;">
+            <strong>What we take:</strong> Documenting the rise of hybrid touch, stylus, and gesture inputs in creative workflows.
+          </div>
+        </div>
+
+        <div class="guard-box">
+          <strong>4. Dang, Q.-V. (2026)</strong> <em>Artificial intelligence as assistive technology for disabled students in higher education</em>. J Enabling Technol.
+          <div style="color:var(--text-sub); margin-top:4px;">
+            <strong>What we take:</strong> Acknowledges the legitimate argument that generation is assistive; our architectural response is helping at the input while preserving human ownership.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 6: Limits and Next -->
+    <section>
+      <div style="margin-bottom:12px;">
+        <h2 style="font-size:20px; font-weight:800;">Honest Limitations & Roadmap</h2>
+      </div>
+      <div class="guard-box" style="font-size:13px; color:var(--text-sub); line-height:1.6;">
+        <p>• <strong>Solid Fills Only:</strong> Contrast analysis inspects solid color text against solid ancestor containers. Gradients, background imagery, and blend modes are skipped.</p>
+        <p>• <strong>Learning Aid, Not Legal Audit:</strong> SousArtist is an educational coach to build muscle memory; it is not a certified accessibility compliance audit.</p>
+        <p>• <strong>Roadmap Claims:</strong> Voice/switch input, Krita adapters, and cohort analytics are future roadmap exploration items, not shipped MVP features.</p>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // Theme toggle
+    const themeBtn = document.getElementById('theme-btn');
+    themeBtn.addEventListener('click', () => {
+      const current = document.documentElement.getAttribute('data-theme');
+      const next = current === 'light' ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', next);
+    });
+
+    // Color slider & live WCAG contrast
+    function linearize(c) {
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    }
+    function relLuminance(r, g, b) {
+      return 0.2126 * linearize(r/255) + 0.7152 * linearize(g/255) + 0.0722 * linearize(b/255);
+    }
+
+    const colorSlider = document.getElementById('color-slider');
+    const colorHexVal = document.getElementById('color-hex-val');
+    const simRatioLive = document.getElementById('sim-ratio-live');
+    const canvasCardBody = document.getElementById('canvas-card-body');
+
+    colorSlider.addEventListener('input', () => {
+      const val = parseInt(colorSlider.value);
+      const hex = '#' + val.toString(16).padStart(2, '0').repeat(3).toUpperCase();
+      colorHexVal.textContent = hex;
+      canvasCardBody.style.color = hex;
+
+      const l1 = relLuminance(255, 255, 255);
+      const l2 = relLuminance(val, val, val);
+      const ratio = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+      simRatioLive.textContent = ratio.toFixed(2) + ':1';
+      simRatioLive.style.color = ratio >= 4.5 ? 'var(--success)' : 'var(--danger)';
+    });
+
+    // Guard playground
+    const guardInput = document.getElementById('guard-input');
+    const guardTestBtn = document.getElementById('guard-test-btn');
+    const guardResultDisplay = document.getElementById('guard-result-display');
+
+    function testGuard(query) {
+      const q = query.toLowerCase().trim();
+      const generativeRegex = /\b(design (me|a|an|the)|create (a|an|me|the)|make (a|an|me|the|this)|generate (a|an|me|the)|build (a|an|me|the)|draw (a|an|me|the)|produce (a|an|me|the)|write (the|a|my)?\s*(css|html|code|copy)|give me (the|a)?\s*(html|css|code|layout)|rewrite (my|the)?\s*(text|copy)|replace my|fix it for me|do it for me|palette|exact hex|mockup|hero section|dashboard|login form|login page|checkout|button with)\b/i;
+
+      if (generativeRegex.test(q)) {
+        guardResultDisplay.innerHTML = `
+          <div style="font-weight:700; color:var(--accent); margin-bottom:4px;">[DEFLECTED TO CANNED REDIRECT]</div>
+          <div style="color:var(--text-main);">"I coach, I don't create. The design stays yours. Want a 2-minute lesson on contrast so you can do this faster yourself?"</div>
+          <div style="font-size:11px; color:var(--text-sub); margin-top:4px;">Rule 5 enforced: Creative requests intercept before any model invocation. Zero generated visual assets.</div>
+        `;
+      } else {
+        guardResultDisplay.innerHTML = `
+          <div style="font-weight:700; color:var(--success); margin-bottom:4px;">[CONCEPTUAL EXPLANATION ALLOWED]</div>
+          <div style="color:var(--text-main);">"The 8pt spacing grid establishes a predictable cadence (8, 16, 24, 32px), eliminating arbitrary margins and accelerating developer handoff."</div>
+          <div style="font-size:11px; color:var(--text-sub); margin-top:4px;">Compliant coaching: Socratic guidance without writing code or generating layouts.</div>
+        `;
+      }
+    }
+
+    guardTestBtn.addEventListener('click', () => testGuard(guardInput.value));
+    guardInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') testGuard(guardInput.value); });
+
+    document.querySelectorAll('.test-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const p = btn.getAttribute('data-prompt');
+        guardInput.value = p;
+        testGuard(p);
+      });
+    });
+
+    // Simulator Tab Navigation
+    const simBody = document.getElementById('sim-body');
+    const simTabs = document.querySelectorAll('.plugin-tab-btn');
+
+    function renderSimTab(tab) {
+      if (tab === 'sim-path') {
+        simBody.innerHTML = `
+          <div style="background:var(--bg-panel); border:1px solid var(--border-color); border-radius:6px; padding:10px;">
+            <div style="font-weight:700; font-size:12px;">Daily Goal: 0 / 1 Completed</div>
+            <div style="background:var(--border-color); height:4px; border-radius:2px; margin-top:6px;"></div>
+          </div>
+          <div style="background:var(--bg-panel); border:1px solid var(--accent); border-radius:6px; padding:10px; display:flex; flex-direction:column; gap:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <strong>🌓 Color Contrast</strong>
+              <span style="font-size:10px; background:rgba(16,185,129,0.15); color:var(--success); padding:2px 6px; border-radius:4px;">Recommended</span>
+            </div>
+            <div style="font-size:11px; color:var(--text-sub);">Darken text on white card until ratio >= 4.5:1.</div>
+            <button id="sim-btn-check" style="background:var(--accent); color:#fff; border:none; padding:6px 12px; border-radius:4px; font-weight:700; cursor:pointer;">Check my work</button>
+            <div id="sim-check-res"></div>
+          </div>
+        `;
+
+        document.getElementById('sim-btn-check').addEventListener('click', () => {
+          const val = parseInt(colorSlider.value);
+          const l1 = relLuminance(255, 255, 255);
+          const l2 = relLuminance(val, val, val);
+          const ratio = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+
+          const resEl = document.getElementById('sim-check-res');
+          if (ratio >= 4.5) {
+            resEl.innerHTML = `<span style="color:var(--success); font-weight:700;">✓ Verified! +15 XP</span>`;
+            document.getElementById('sim-xp-display').textContent = '⚡ 30 XP • 🔥 1d';
+          } else {
+            resEl.innerHTML = `<span style="color:var(--warning); font-weight:700;">Needs work: ratio is ${ratio.toFixed(2)}:1 (needs 4.5:1)</span>`;
+          }
+        });
+      } else if (tab === 'sim-audit') {
+        simBody.innerHTML = `
+          <button style="background:var(--accent); color:#fff; border:none; padding:8px; border-radius:6px; font-weight:600; width:100%;">Audit this page (read-only)</button>
+          <div style="font-size:11px; color:var(--text-dim); text-align:center;">Only structural numbers leave your file.</div>
+          <div style="background:var(--bg-panel); border:1px solid var(--border-color); border-radius:6px; padding:10px; display:flex; flex-direction:column; gap:6px;">
+            <div style="display:flex; justify-content:space-between; font-weight:700;">
+              <span>🌓 Contrast</span>
+              <span style="color:var(--danger);">1 High</span>
+            </div>
+            <div style="font-size:11px; color:var(--text-sub);">Ratio 2.14:1 (needs 4.5:1)</div>
+          </div>
+        `;
+      } else if (tab === 'sim-coach') {
+        simBody.innerHTML = `
+          <div style="background:var(--bg-panel); border:1px solid var(--border-color); border-radius:6px; padding:10px; font-size:11px; color:var(--text-sub);">
+            Ask questions about WCAG, grid rules, or shortcuts.
+          </div>
+          <div style="margin-top:auto; display:flex; gap:6px;">
+            <input type="text" placeholder="Ask coach..." style="flex:1; background:var(--bg-panel); border:1px solid var(--border-color); color:var(--text-main); padding:6px; border-radius:4px; font-size:11px;">
+            <button style="background:var(--accent); color:#fff; border:none; padding:6px 10px; border-radius:4px; font-weight:600;">Ask</button>
+          </div>
+        `;
+      } else if (tab === 'sim-craft') {
+        simBody.innerHTML = `
+          <div style="background:var(--bg-panel); border:1px solid var(--border-color); border-radius:6px; padding:10px;">
+            <strong>🎨 Craft: Color Relationships</strong>
+            <p style="font-size:11px; color:var(--text-sub); margin-top:4px;">
+              Measures HSL hue distance (Complementary: 180° ± 15°, Analogous: 15°–45°).
+            </p>
+          </div>
+          <div style="background:var(--bg-panel); border:1px solid var(--border-color); border-radius:6px; padding:10px;">
+            <strong>📐 Craft: Golden Ratio</strong>
+            <p style="font-size:11px; color:var(--text-sub); margin-top:4px;">
+              Proportion check: long:short within 2% of 1.618.
+            </p>
+          </div>
+        `;
+      }
+    }
+
+    simTabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        simTabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        renderSimTab(tab.getAttribute('data-tab'));
+      });
+    });
+
+    // Initial render
+    renderSimTab('sim-path');
+  </script>
+</body>
+</html>
