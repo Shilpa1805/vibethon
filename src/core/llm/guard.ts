@@ -22,6 +22,10 @@ export function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export function guardHint(
   text: string,
   level: number,
@@ -49,9 +53,9 @@ export function guardHint(
     }
   }
 
-  // 4. At levels 1-2, cannot contain hex color
-  if (level <= 2 && HEX_COLOR_REGEX.test(text)) {
-    return { ok: false, reason: 'Reveals hex color at hint level <= 2' };
+  // 4. At levels 1-3, cannot contain hex color (spec section 7.2)
+  if (level <= 3 && HEX_COLOR_REGEX.test(text)) {
+    return { ok: false, reason: 'Reveals hex color at hint level <= 3' };
   }
 
   // 5. At levels 1-2, cannot contain exact target value from expected
@@ -59,9 +63,19 @@ export function guardHint(
     for (const key of Object.keys(expected)) {
       const val = expected[key];
       if (typeof val === 'number' || typeof val === 'string') {
-        const strVal = String(val);
-        // Avoid flagging single common digits like "4" or "8" if part of word, but check whole word or exact threshold
-        const targetRegex = new RegExp(`\\b${strVal}\\b`, 'i');
+        const strVal = String(val).trim();
+        let targetRegex: RegExp;
+
+        // Treat 4.5, 4.5:1, and 4.5 : 1 as the same value
+        if (strVal === '4.5' || strVal === '4.5:1' || strVal === '4.5 : 1') {
+          targetRegex = /\b4\.5(\s*:\s*1)?\b/i;
+        } else {
+          const escaped = escapeRegex(strVal);
+          const startBound = /^\w/.test(strVal) ? '\\b' : '';
+          const endBound = /\w$/.test(strVal) ? '\\b' : '';
+          targetRegex = new RegExp(`${startBound}${escaped}${endBound}`, 'i');
+        }
+
         if (targetRegex.test(text)) {
           return { ok: false, reason: `Reveals expected target value "${strVal}" at hint level <= 2` };
         }

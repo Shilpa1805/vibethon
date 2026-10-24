@@ -841,6 +841,9 @@ OUTPUT FORMAT: Return strictly a valid JSON object matching:
   function countWords(text) {
     return text.trim().split(/\s+/).filter(Boolean).length;
   }
+  function escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\<!-- INLINE_JS -->");
+  }
   function guardHint(text, level, expected) {
     if (!text || text.trim().length === 0) {
       return { ok: false, reason: "Empty output" };
@@ -857,15 +860,23 @@ OUTPUT FORMAT: Return strictly a valid JSON object matching:
         return { ok: false, reason: `Matches generative design pattern: ${pattern}` };
       }
     }
-    if (level <= 2 && HEX_COLOR_REGEX.test(text)) {
-      return { ok: false, reason: "Reveals hex color at hint level <= 2" };
+    if (level <= 3 && HEX_COLOR_REGEX.test(text)) {
+      return { ok: false, reason: "Reveals hex color at hint level <= 3" };
     }
     if (level <= 2 && expected) {
       for (const key of Object.keys(expected)) {
         const val = expected[key];
         if (typeof val === "number" || typeof val === "string") {
-          const strVal = String(val);
-          const targetRegex = new RegExp(`\\b${strVal}\\b`, "i");
+          const strVal = String(val).trim();
+          let targetRegex;
+          if (strVal === "4.5" || strVal === "4.5:1" || strVal === "4.5 : 1") {
+            targetRegex = /\b4\.5(\s*:\s*1)?\b/i;
+          } else {
+            const escaped = escapeRegex(strVal);
+            const startBound = /^\w/.test(strVal) ? "\\b" : "";
+            const endBound = /\w$/.test(strVal) ? "\\b" : "";
+            targetRegex = new RegExp(`${startBound}${escaped}${endBound}`, "i");
+          }
           if (targetRegex.test(text)) {
             return { ok: false, reason: `Reveals expected target value "${strVal}" at hint level <= 2` };
           }
