@@ -321,7 +321,68 @@ button:focus-visible {
 
   <script>"use strict";
 (() => {
+  // src/core/lessons/lessons.ts
+  var LESSONS = {
+    "contrast": {
+      id: "lesson-contrast",
+      skill: "contrast",
+      title: "Color Contrast & Readability",
+      goal: "Change the light gray text color on this white card until contrast ratio reaches at least 4.5:1 (WCAG AA).",
+      shortcutTip: 'Press "I" to open the Eyedropper and sample darker tones.',
+      staticHints: [
+        "Is the text easily readable against the white background, or does it blend into the card?",
+        "WCAG AA requires a 4.5:1 ratio for normal text. Currently this gray is about 2.1:1.",
+        "Select the text layer, open the Fill section in the right sidebar, and choose a darker tone like #4B5563 or darker."
+      ],
+      workedExample: "On pure white (#FFFFFF), #767676 reaches exactly 4.54:1 (AA minimum), while #1F2937 delivers a crisp 13.5:1 ratio."
+    },
+    "spacing-grid": {
+      id: "lesson-spacing-grid",
+      skill: "spacing-grid",
+      title: "8-Point Spacing Grid",
+      goal: "Adjust the container item spacing and padding to multiples of 4 (preferably 8) so the card aligns with the grid.",
+      shortcutTip: "Hold Shift + Arrow keys to nudge values in 8px increments.",
+      staticHints: [
+        "Do the gaps and margins feel consistent, or do the odd numbers break the visual rhythm?",
+        "The itemSpacing is currently 13px and padding is 7px and 19px. In an 8-point system, spacing values should be multiples of 4 or 8.",
+        "Select the container frame. In the Auto layout panel, change the gap to 16px and horizontal/vertical padding to 16px or 24px."
+      ],
+      workedExample: "Standard 8pt scale uses 8px (small), 16px (medium), 24px (large), and 32px (xlarge). 4px is reserved for tight micro-elements."
+    },
+    "layer-naming": {
+      id: "lesson-layer-naming",
+      skill: "layer-naming",
+      title: "Semantic Layer Naming",
+      goal: "Rename the default Figma names (Frame 12, Rectangle 4, Group 3) to descriptive names indicating their purpose.",
+      shortcutTip: "Press Cmd/Ctrl + R to quickly batch-rename selected layers.",
+      staticHints: [
+        "If a teammate inspected this file, would the layer names clearly explain what each element represents?",
+        'Default names like "Frame 12" and "Rectangle 4" create clutter and slow down developer handoff.',
+        'Double-click each layer in the left sidebar (or press Cmd/Ctrl+R) and rename them meaningfully, such as "CardContainer", "MediaThumbnail", or "HeaderGroup".'
+      ],
+      workedExample: 'Use component-oriented naming: "UserProfileCard" for the parent frame, "AvatarImage" for the media shape, and "CardHeader" for the text group.'
+    },
+    "auto-layout": {
+      id: "lesson-auto-layout",
+      skill: "auto-layout",
+      title: "Responsive Auto Layout",
+      goal: "Convert this frame with manually positioned elements into an Auto Layout frame so it adapts responsively.",
+      shortcutTip: "Press Shift + A to instantly turn any selection or frame into Auto Layout.",
+      staticHints: [
+        "What happens if the text expands or elements resize? Do they adapt or overlap?",
+        "The container has 3 child elements using absolute manual coordinates instead of an active layout flow.",
+        'Select the outer frame and press Shift+A, or click "+" next to Auto layout in the right sidebar. Choose Vertical direction.'
+      ],
+      workedExample: "Auto layout with Vertical direction and 12px gap ensures items stack cleanly and reflow when content changes."
+    }
+  };
+
   // src/ui/ui.ts
+  var learnerState = null;
+  var activeSkill = "contrast";
+  var activeFrameId = null;
+  var currentHintLevel = 0;
+  var hintsUsedInSession = 0;
   var tabButtons = document.querySelectorAll(".tab-btn");
   var tabContents = document.querySelectorAll(".tab-content");
   function switchTab(targetTab) {
@@ -448,12 +509,9 @@ button:focus-visible {
       btn.addEventListener("click", () => {
         const skill = btn.getAttribute("data-skill");
         if (skill) {
+          activeSkill = skill;
           switchTab("path");
-          const lessonTarget = document.getElementById(`lesson-node-${skill}`);
-          if (lessonTarget) {
-            lessonTarget.scrollIntoView({ behavior: "smooth" });
-            lessonTarget.click();
-          }
+          renderPathTab();
         }
       });
     });
@@ -490,10 +548,179 @@ button:focus-visible {
     </div>
   `;
   }
+  function renderPathTab() {
+    const xpEl = document.getElementById("stat-xp");
+    const streakEl = document.getElementById("stat-streak");
+    const pathContainer = document.getElementById("path-container");
+    const dailyGoalText = document.getElementById("daily-goal-text");
+    const dailyGoalBar = document.getElementById("daily-goal-bar");
+    if (learnerState) {
+      if (xpEl) xpEl.textContent = `${learnerState.xp} XP`;
+      if (streakEl) streakEl.textContent = `${learnerState.streakDays}d`;
+      const completedCount = learnerState.completedLessons.length;
+      if (dailyGoalText) {
+        dailyGoalText.textContent = completedCount > 0 ? "1 / 1 completed" : "0 / 1 completed";
+      }
+      if (dailyGoalBar) {
+        dailyGoalBar.style.width = completedCount > 0 ? "100%" : "0%";
+      }
+    }
+    if (!pathContainer) return;
+    const skills = ["contrast", "spacing-grid", "layer-naming", "auto-layout"];
+    const skillIcons = {
+      "contrast": "\u{1F313}",
+      "spacing-grid": "\u{1F4D0}",
+      "layer-naming": "\u{1F3F7}\uFE0F",
+      "auto-layout": "\u{1F4E6}"
+    };
+    let html = "";
+    for (const skill of skills) {
+      const lesson = LESSONS[skill];
+      const skillData = learnerState?.skills[skill] || { box: 0, dueDate: "", attempts: 0 };
+      const isSelected = skill === activeSkill;
+      const isMastered = skillData.box >= 4;
+      html += `
+      <div class="card ${isSelected ? "selected" : ""}" id="lesson-card-${skill}" style="border-color:${isSelected ? "var(--accent-color)" : "var(--border-color)"};">
+        <div class="lesson-header" data-skill="${skill}" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <div style="font-size:18px;">${skillIcons[skill]}</div>
+            <div>
+              <div style="font-weight:700; font-size:13px;">${lesson.title}</div>
+              <div style="font-size:11px; color:var(--text-secondary);">
+                Leitner Box ${skillData.box}/4 ${isMastered ? "\u2022 Mastered \u{1F3C6}" : ""}
+              </div>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            ${skill === "contrast" ? `<span class="badge-tag" style="background:rgba(16,185,129,0.15); color:var(--success-color);">Recommended</span>` : ""}
+            <span style="font-size:12px; color:var(--text-secondary);">${isSelected ? "\u25B2" : "\u25BC"}</span>
+          </div>
+        </div>
+
+        ${isSelected ? renderActiveLessonPanel(lesson) : ""}
+      </div>
+    `;
+    }
+    pathContainer.innerHTML = html;
+    pathContainer.querySelectorAll(".lesson-header").forEach((el) => {
+      el.addEventListener("click", () => {
+        const skill = el.getAttribute("data-skill");
+        if (skill) {
+          activeSkill = skill;
+          currentHintLevel = 0;
+          renderPathTab();
+        }
+      });
+    });
+    const btnSetup = document.getElementById("btn-setup-practice");
+    const btnVerify = document.getElementById("btn-verify-practice");
+    const btnHint = document.getElementById("btn-request-hint");
+    if (btnSetup) {
+      btnSetup.addEventListener("click", () => {
+        btnSetup.textContent = 'Setting up frame in "SousArtist Practice"...';
+        parent.postMessage({ pluginMessage: { type: "BUILD_PRACTICE", skill: activeSkill } }, "*");
+      });
+    }
+    if (btnVerify) {
+      btnVerify.addEventListener("click", () => {
+        btnVerify.textContent = "Checking work deterministically...";
+        parent.postMessage({
+          pluginMessage: {
+            type: "VERIFY_PRACTICE",
+            skill: activeSkill,
+            frameId: activeFrameId,
+            hintsUsedCount: hintsUsedInSession
+          }
+        }, "*");
+      });
+    }
+    if (btnHint) {
+      btnHint.addEventListener("click", () => {
+        if (currentHintLevel < 4) {
+          currentHintLevel += 1;
+          hintsUsedInSession += 1;
+        }
+        renderHintBox();
+      });
+    }
+  }
+  function renderActiveLessonPanel(lesson) {
+    return `
+    <div style="margin-top:14px; padding-top:14px; border-top:1px solid var(--border-color); display:flex; flex-direction:column; gap:12px;">
+      <div>
+        <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin-bottom:4px;">Goal</div>
+        <div style="font-size:12px; line-height:1.4;">${lesson.goal}</div>
+      </div>
+
+      <div style="display:flex; gap:8px;">
+        <button class="btn-primary" id="btn-setup-practice" style="flex:1;">
+          Set up practice frame
+        </button>
+        <button class="btn-secondary" id="btn-verify-practice" style="flex:1;">
+          Check my work
+        </button>
+      </div>
+
+      <div id="verification-result-box"></div>
+
+      <!-- Hint Section -->
+      <div class="card" style="background:var(--bg-primary); padding:10px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-weight:600; font-size:11px; color:var(--text-secondary);">
+            Hint Ladder ${currentHintLevel > 0 ? `(Level ${currentHintLevel}/4)` : ""}
+          </span>
+          <button class="btn-secondary" id="btn-request-hint" style="padding:2px 8px; font-size:11px;">
+            ${currentHintLevel === 0 ? "Need a hint?" : currentHintLevel < 4 ? "Next hint level" : "Worked example"}
+          </button>
+        </div>
+        <div id="hint-content-box" style="margin-top:6px; font-size:12px; color:var(--text-primary); line-height:1.4;">
+          ${getHintText(lesson, currentHintLevel)}
+        </div>
+      </div>
+
+      <!-- Shortcut tip -->
+      <div style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
+        <span>\u{1F4A1}</span>
+        <span>${lesson.shortcutTip}</span>
+      </div>
+    </div>
+  `;
+  }
+  function getHintText(lesson, level) {
+    if (level === 0) {
+      return '<span style="color:var(--text-muted);">Try fixing the frame by hand in Figma first. Hints guide your thinking without revealing the solution.</span>';
+    }
+    if (level === 1) {
+      return `<strong>Level 1 (Socratic):</strong> ${lesson.staticHints[0]}`;
+    }
+    if (level === 2) {
+      return `<strong>Level 2 (Rule details):</strong> ${lesson.staticHints[1]}`;
+    }
+    if (level === 3) {
+      return `<strong>Level 3 (Action steps):</strong> ${lesson.staticHints[2]}`;
+    }
+    return `<strong>Level 4 (Worked Example):</strong> ${lesson.workedExample}`;
+  }
+  function renderHintBox() {
+    const box = document.getElementById("hint-content-box");
+    const btn = document.getElementById("btn-request-hint");
+    const lesson = LESSONS[activeSkill];
+    if (box && lesson) {
+      box.innerHTML = getHintText(lesson, currentHintLevel);
+    }
+    if (btn) {
+      btn.textContent = currentHintLevel === 0 ? "Need a hint?" : currentHintLevel < 4 ? "Next hint level" : "Worked example";
+    }
+  }
   window.onmessage = (event) => {
     const msg = event.data.pluginMessage;
     if (!msg) return;
     switch (msg.type) {
+      case "LEARNER_STATE_LOADED": {
+        learnerState = msg.state;
+        renderPathTab();
+        break;
+      }
       case "SELECTION_COUNT": {
         if (selectionStatus) {
           selectionStatus.textContent = `Selected: ${msg.count} node(s) on page "${msg.pageName}".`;
@@ -512,6 +739,52 @@ button:focus-visible {
         showToast(msg.error || "Audit encountered an issue.");
         break;
       }
+      case "PRACTICE_FRAME_READY": {
+        activeFrameId = msg.frameId;
+        const btnSetup = document.getElementById("btn-setup-practice");
+        if (btnSetup) btnSetup.textContent = 'Frame ready on "SousArtist Practice"';
+        showToast(`Practice frame created on "SousArtist Practice" page.`);
+        break;
+      }
+      case "VERIFICATION_RESULT": {
+        const btnVerify = document.getElementById("btn-verify-practice");
+        if (btnVerify) btnVerify.textContent = "Check my work";
+        const resBox = document.getElementById("verification-result-box");
+        if (resBox) {
+          if (msg.result.passed) {
+            resBox.innerHTML = `
+            <div class="card" style="background:rgba(16,185,129,0.1); border-color:var(--success-color); padding:10px;">
+              <div style="font-weight:700; color:var(--success-color); font-size:13px; display:flex; justify-content:space-between;">
+                <span>\u2713 Verified by Rule Engine!</span>
+                <span>+${msg.result.earnedXp || 10} XP</span>
+              </div>
+              <div style="font-size:12px; margin-top:4px;">${msg.result.message}</div>
+            </div>
+          `;
+            if (msg.result.state) {
+              learnerState = msg.result.state;
+              const xpEl = document.getElementById("stat-xp");
+              if (xpEl) xpEl.textContent = `${learnerState.xp} XP`;
+            }
+          } else {
+            resBox.innerHTML = `
+            <div class="card" style="background:rgba(245,158,11,0.1); border-color:var(--warning-color); padding:10px;">
+              <div style="font-weight:700; color:var(--warning-color); font-size:13px;">
+                Needs Adjustment
+              </div>
+              <div style="font-size:12px; margin-top:4px;">${msg.result.message}</div>
+            </div>
+          `;
+          }
+        }
+        break;
+      }
+      case "LEITNER_DROPPED": {
+        learnerState = msg.state;
+        showToast(`Transfer check: Gaps found on real page. Dropped ${msg.droppedSkills.join(", ")} to Box 0.`);
+        renderPathTab();
+        break;
+      }
       case "TOAST": {
         showToast(msg.message);
         break;
@@ -527,6 +800,7 @@ button:focus-visible {
       toast.style.display = "none";
     }, durationMs);
   }
+  parent.postMessage({ pluginMessage: { type: "INIT_APP" } }, "*");
 })();
 </script>
 </body>

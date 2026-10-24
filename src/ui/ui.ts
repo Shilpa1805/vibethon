@@ -1,7 +1,16 @@
 // SousArtist - UI Controller
-import { AuditSummary, Finding, SkillId } from '../core/types';
+// Move, Measure, Manage - Never Make design for the user
 
-// Tab switching
+import { AuditSummary, Finding, LearnerState, SkillId } from '../core/types';
+import { LESSONS, LessonDefinition } from '../core/lessons/lessons';
+
+let learnerState: LearnerState | null = null;
+let activeSkill: SkillId = 'contrast';
+let activeFrameId: string | null = null;
+let currentHintLevel = 0; // 0: no hint, 1..4: hint ladder
+let hintsUsedInSession = 0;
+
+// Tab Switching
 const tabButtons = document.querySelectorAll<HTMLButtonElement>('.tab-btn');
 const tabContents = document.querySelectorAll<HTMLElement>('.tab-content');
 
@@ -81,7 +90,6 @@ function renderAuditResults(audit: AuditSummary, pageName: string) {
   }
 
   let html = '';
-
   if (audit.truncated) {
     html += `
       <div class="card" style="background:rgba(245, 158, 11, 0.1); border-color:var(--warning-color); padding:10px; font-size:11px; color:var(--warning-color);">
@@ -90,7 +98,6 @@ function renderAuditResults(audit: AuditSummary, pageName: string) {
     `;
   }
 
-  // Summary header
   html += `
     <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
       <span style="font-weight:700; font-size:13px;">Found ${audit.totalCount} Gap${audit.totalCount === 1 ? '' : 's'}</span>
@@ -98,7 +105,6 @@ function renderAuditResults(audit: AuditSummary, pageName: string) {
     </div>
   `;
 
-  // Per-skill cards
   const skillMeta: Record<SkillId, { label: string; icon: string }> = {
     'contrast': { label: 'Color Contrast', icon: '🌓' },
     'spacing-grid': { label: 'Spacing Grid', icon: '📐' },
@@ -146,22 +152,17 @@ function renderAuditResults(audit: AuditSummary, pageName: string) {
 
   auditResults.innerHTML = html;
 
-  // Wire "Study this" buttons
   auditResults.querySelectorAll('.btn-study').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const skill = btn.getAttribute('data-skill');
+      const skill = btn.getAttribute('data-skill') as SkillId;
       if (skill) {
+        activeSkill = skill;
         switchTab('path');
-        const lessonTarget = document.getElementById(`lesson-node-${skill}`);
-        if (lessonTarget) {
-          lessonTarget.scrollIntoView({ behavior: 'smooth' });
-          lessonTarget.click();
-        }
+        renderPathTab();
       }
     });
   });
 
-  // Wire inspect layer clicks
   auditResults.querySelectorAll('.btn-inspect').forEach((btn) => {
     btn.addEventListener('click', () => {
       const nodeId = btn.getAttribute('data-node-id');
@@ -199,22 +200,214 @@ function renderFindingItem(f: Finding): string {
   `;
 }
 
-// Window message dispatcher
+// Path Tab Logic & Rendering
+export function renderPathTab() {
+  const xpEl = document.getElementById('stat-xp');
+  const streakEl = document.getElementById('stat-streak');
+  const pathContainer = document.getElementById('path-container');
+  const dailyGoalText = document.getElementById('daily-goal-text');
+  const dailyGoalBar = document.getElementById('daily-goal-bar');
+
+  if (learnerState) {
+    if (xpEl) xpEl.textContent = `${learnerState.xp} XP`;
+    if (streakEl) streakEl.textContent = `${learnerState.streakDays}d`;
+
+    const completedCount = learnerState.completedLessons.length;
+    if (dailyGoalText) {
+      dailyGoalText.textContent = completedCount > 0 ? '1 / 1 completed' : '0 / 1 completed';
+    }
+    if (dailyGoalBar) {
+      dailyGoalBar.style.width = completedCount > 0 ? '100%' : '0%';
+    }
+  }
+
+  if (!pathContainer) return;
+
+  const skills: SkillId[] = ['contrast', 'spacing-grid', 'layer-naming', 'auto-layout'];
+  const skillIcons: Record<SkillId, string> = {
+    'contrast': '🌓',
+    'spacing-grid': '📐',
+    'layer-naming': '🏷️',
+    'auto-layout': '📦',
+  };
+
+  let html = '';
+
+  for (const skill of skills) {
+    const lesson = LESSONS[skill];
+    const skillData = learnerState?.skills[skill] || { box: 0, dueDate: '', attempts: 0 };
+    const isSelected = skill === activeSkill;
+    const isMastered = skillData.box >= 4;
+
+    html += `
+      <div class="card ${isSelected ? 'selected' : ''}" id="lesson-card-${skill}" style="border-color:${isSelected ? 'var(--accent-color)' : 'var(--border-color)'};">
+        <div class="lesson-header" data-skill="${skill}" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <div style="font-size:18px;">${skillIcons[skill]}</div>
+            <div>
+              <div style="font-weight:700; font-size:13px;">${lesson.title}</div>
+              <div style="font-size:11px; color:var(--text-secondary);">
+                Leitner Box ${skillData.box}/4 ${isMastered ? '• Mastered 🏆' : ''}
+              </div>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            ${skill === 'contrast' ? `<span class="badge-tag" style="background:rgba(16,185,129,0.15); color:var(--success-color);">Recommended</span>` : ''}
+            <span style="font-size:12px; color:var(--text-secondary);">${isSelected ? '▲' : '▼'}</span>
+          </div>
+        </div>
+
+        ${isSelected ? renderActiveLessonPanel(lesson) : ''}
+      </div>
+    `;
+  }
+
+  pathContainer.innerHTML = html;
+
+  // Wire header clicks to expand/collapse
+  pathContainer.querySelectorAll('.lesson-header').forEach((el) => {
+    el.addEventListener('click', () => {
+      const skill = el.getAttribute('data-skill') as SkillId;
+      if (skill) {
+        activeSkill = skill;
+        currentHintLevel = 0;
+        renderPathTab();
+      }
+    });
+  });
+
+  // Wire lesson interactive buttons
+  const btnSetup = document.getElementById('btn-setup-practice');
+  const btnVerify = document.getElementById('btn-verify-practice');
+  const btnHint = document.getElementById('btn-request-hint');
+
+  if (btnSetup) {
+    btnSetup.addEventListener('click', () => {
+      btnSetup.textContent = 'Setting up frame in "SousArtist Practice"...';
+      parent.postMessage({ pluginMessage: { type: 'BUILD_PRACTICE', skill: activeSkill } }, '*');
+    });
+  }
+
+  if (btnVerify) {
+    btnVerify.addEventListener('click', () => {
+      btnVerify.textContent = 'Checking work deterministically...';
+      parent.postMessage({
+        pluginMessage: {
+          type: 'VERIFY_PRACTICE',
+          skill: activeSkill,
+          frameId: activeFrameId,
+          hintsUsedCount: hintsUsedInSession,
+        },
+      }, '*');
+    });
+  }
+
+  if (btnHint) {
+    btnHint.addEventListener('click', () => {
+      if (currentHintLevel < 4) {
+        currentHintLevel += 1;
+        hintsUsedInSession += 1;
+      }
+      renderHintBox();
+    });
+  }
+}
+
+function renderActiveLessonPanel(lesson: LessonDefinition): string {
+  return `
+    <div style="margin-top:14px; padding-top:14px; border-top:1px solid var(--border-color); display:flex; flex-direction:column; gap:12px;">
+      <div>
+        <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin-bottom:4px;">Goal</div>
+        <div style="font-size:12px; line-height:1.4;">${lesson.goal}</div>
+      </div>
+
+      <div style="display:flex; gap:8px;">
+        <button class="btn-primary" id="btn-setup-practice" style="flex:1;">
+          Set up practice frame
+        </button>
+        <button class="btn-secondary" id="btn-verify-practice" style="flex:1;">
+          Check my work
+        </button>
+      </div>
+
+      <div id="verification-result-box"></div>
+
+      <!-- Hint Section -->
+      <div class="card" style="background:var(--bg-primary); padding:10px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-weight:600; font-size:11px; color:var(--text-secondary);">
+            Hint Ladder ${currentHintLevel > 0 ? `(Level ${currentHintLevel}/4)` : ''}
+          </span>
+          <button class="btn-secondary" id="btn-request-hint" style="padding:2px 8px; font-size:11px;">
+            ${currentHintLevel === 0 ? 'Need a hint?' : currentHintLevel < 4 ? 'Next hint level' : 'Worked example'}
+          </button>
+        </div>
+        <div id="hint-content-box" style="margin-top:6px; font-size:12px; color:var(--text-primary); line-height:1.4;">
+          ${getHintText(lesson, currentHintLevel)}
+        </div>
+      </div>
+
+      <!-- Shortcut tip -->
+      <div style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
+        <span>💡</span>
+        <span>${lesson.shortcutTip}</span>
+      </div>
+    </div>
+  `;
+}
+
+function getHintText(lesson: LessonDefinition, level: number): string {
+  if (level === 0) {
+    return '<span style="color:var(--text-muted);">Try fixing the frame by hand in Figma first. Hints guide your thinking without revealing the solution.</span>';
+  }
+  if (level === 1) {
+    return `<strong>Level 1 (Socratic):</strong> ${lesson.staticHints[0]}`;
+  }
+  if (level === 2) {
+    return `<strong>Level 2 (Rule details):</strong> ${lesson.staticHints[1]}`;
+  }
+  if (level === 3) {
+    return `<strong>Level 3 (Action steps):</strong> ${lesson.staticHints[2]}`;
+  }
+  return `<strong>Level 4 (Worked Example):</strong> ${lesson.workedExample}`;
+}
+
+function renderHintBox() {
+  const box = document.getElementById('hint-content-box');
+  const btn = document.getElementById('btn-request-hint');
+  const lesson = LESSONS[activeSkill];
+  if (box && lesson) {
+    box.innerHTML = getHintText(lesson, currentHintLevel);
+  }
+  if (btn) {
+    btn.textContent = currentHintLevel === 0 ? 'Need a hint?' : currentHintLevel < 4 ? 'Next hint level' : 'Worked example';
+  }
+}
+
+// Window Message Dispatcher
 window.onmessage = (event) => {
   const msg = event.data.pluginMessage;
   if (!msg) return;
 
   switch (msg.type) {
+    case 'LEARNER_STATE_LOADED': {
+      learnerState = msg.state;
+      renderPathTab();
+      break;
+    }
+
     case 'SELECTION_COUNT': {
       if (selectionStatus) {
         selectionStatus.textContent = `Selected: ${msg.count} node(s) on page "${msg.pageName}".`;
       }
       break;
     }
+
     case 'AUDIT_RESULTS': {
       renderAuditResults(msg.audit, msg.pageName);
       break;
     }
+
     case 'AUDIT_ERROR': {
       if (btnRunAudit) {
         btnRunAudit.disabled = false;
@@ -223,6 +416,57 @@ window.onmessage = (event) => {
       showToast(msg.error || 'Audit encountered an issue.');
       break;
     }
+
+    case 'PRACTICE_FRAME_READY': {
+      activeFrameId = msg.frameId;
+      const btnSetup = document.getElementById('btn-setup-practice');
+      if (btnSetup) btnSetup.textContent = 'Frame ready on "SousArtist Practice"';
+      showToast(`Practice frame created on "SousArtist Practice" page.`);
+      break;
+    }
+
+    case 'VERIFICATION_RESULT': {
+      const btnVerify = document.getElementById('btn-verify-practice');
+      if (btnVerify) btnVerify.textContent = 'Check my work';
+
+      const resBox = document.getElementById('verification-result-box');
+      if (resBox) {
+        if (msg.result.passed) {
+          resBox.innerHTML = `
+            <div class="card" style="background:rgba(16,185,129,0.1); border-color:var(--success-color); padding:10px;">
+              <div style="font-weight:700; color:var(--success-color); font-size:13px; display:flex; justify-content:space-between;">
+                <span>✓ Verified by Rule Engine!</span>
+                <span>+${msg.result.earnedXp || 10} XP</span>
+              </div>
+              <div style="font-size:12px; margin-top:4px;">${msg.result.message}</div>
+            </div>
+          `;
+          if (msg.result.state) {
+            learnerState = msg.result.state;
+            const xpEl = document.getElementById('stat-xp');
+            if (xpEl) xpEl.textContent = `${learnerState.xp} XP`;
+          }
+        } else {
+          resBox.innerHTML = `
+            <div class="card" style="background:rgba(245,158,11,0.1); border-color:var(--warning-color); padding:10px;">
+              <div style="font-weight:700; color:var(--warning-color); font-size:13px;">
+                Needs Adjustment
+              </div>
+              <div style="font-size:12px; margin-top:4px;">${msg.result.message}</div>
+            </div>
+          `;
+        }
+      }
+      break;
+    }
+
+    case 'LEITNER_DROPPED': {
+      learnerState = msg.state;
+      showToast(`Transfer check: Gaps found on real page. Dropped ${msg.droppedSkills.join(', ')} to Box 0.`);
+      renderPathTab();
+      break;
+    }
+
     case 'TOAST': {
       showToast(msg.message);
       break;
@@ -239,3 +483,6 @@ export function showToast(message: string, durationMs = 3500) {
     toast.style.display = 'none';
   }, durationMs);
 }
+
+// Request initial state from plugin storage on launch
+parent.postMessage({ pluginMessage: { type: 'INIT_APP' } }, '*');

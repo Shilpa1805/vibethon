@@ -344,10 +344,374 @@
     };
   }
 
+  // src/core/lessons/verify.ts
+  function verifyPracticeFrame(skill, facts) {
+    let findings = [];
+    switch (skill) {
+      case "contrast":
+        findings = analyzeContrast(facts);
+        break;
+      case "spacing-grid":
+        findings = analyzeSpacing(facts);
+        break;
+      case "layer-naming":
+        findings = analyzeNaming(facts);
+        break;
+      case "auto-layout":
+        findings = analyzeAutoLayout(facts);
+        break;
+    }
+    const passed = findings.length === 0;
+    let message = "";
+    if (passed) {
+      message = "Great work! All checks passed deterministically.";
+    } else {
+      const first = findings[0];
+      if (skill === "contrast") {
+        message = `Contrast ratio is currently ${first.measured.ratio}:1 (needs at least ${first.expected.minRatio}:1).`;
+      } else if (skill === "spacing-grid") {
+        message = `${first.measured.property} is ${first.measured.value}px (use multiple of 4, e.g. ${first.expected.recommended8pt}px).`;
+      } else if (skill === "layer-naming") {
+        message = `Layer "${first.measured.currentName}" still has a default Figma name. Rename it to describe its purpose.`;
+      } else if (skill === "auto-layout") {
+        message = `Frame still has layoutMode NONE. Apply Auto Layout (Shift+A).`;
+      }
+    }
+    return {
+      passed,
+      skill,
+      remainingFindings: findings,
+      message
+    };
+  }
+
+  // src/adapters/figma/practice.ts
+  var PRACTICE_PAGE_NAME = "SousArtist Practice";
+  async function getOrCreatePracticePage() {
+    let page = figma.root.children.find((p) => p.name === PRACTICE_PAGE_NAME);
+    if (!page) {
+      page = figma.createPage();
+      page.name = PRACTICE_PAGE_NAME;
+    }
+    if ("loadAsync" in page && typeof page.loadAsync === "function") {
+      await page.loadAsync();
+    }
+    return page;
+  }
+  async function buildPracticeFrame(skill) {
+    const practicePage = await getOrCreatePracticePage();
+    await figma.setCurrentPageAsync(practicePage);
+    await figma.loadFontAsync({ family: "Inter", style: "Regular" });
+    await figma.loadFontAsync({ family: "Inter", style: "Bold" });
+    const existingFrame = practicePage.findChild((n) => n.name.startsWith(`[SousArtist] ${skill}`));
+    if (existingFrame) {
+      existingFrame.remove();
+    }
+    const frame = figma.createFrame();
+    frame.name = `[SousArtist] ${skill} Practice`;
+    frame.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
+    frame.cornerRadius = 8;
+    frame.strokes = [{ type: "SOLID", color: { r: 0.85, g: 0.87, b: 0.9 } }];
+    frame.strokeWeight = 1;
+    switch (skill) {
+      case "contrast": {
+        frame.resize(340, 180);
+        frame.layoutMode = "VERTICAL";
+        frame.itemSpacing = 12;
+        frame.paddingLeft = 24;
+        frame.paddingRight = 24;
+        frame.paddingTop = 24;
+        frame.paddingBottom = 24;
+        const title = figma.createText();
+        title.characters = "Product Card Title";
+        title.fontSize = 20;
+        title.fontName = { family: "Inter", style: "Bold" };
+        title.fills = [{ type: "SOLID", color: { r: 0.1, g: 0.1, b: 0.1 } }];
+        const bodyText = figma.createText();
+        bodyText.characters = "This description text has poor contrast. Use the Fill panel to darken it until it meets WCAG AA (4.5:1).";
+        bodyText.fontSize = 14;
+        bodyText.fontName = { family: "Inter", style: "Regular" };
+        bodyText.fills = [{ type: "SOLID", color: { r: 0.69, g: 0.69, b: 0.69 } }];
+        frame.appendChild(title);
+        frame.appendChild(bodyText);
+        break;
+      }
+      case "spacing-grid": {
+        frame.resize(320, 200);
+        frame.layoutMode = "VERTICAL";
+        frame.itemSpacing = 13;
+        frame.paddingLeft = 7;
+        frame.paddingRight = 19;
+        frame.paddingTop = 7;
+        frame.paddingBottom = 19;
+        const rect1 = figma.createRectangle();
+        rect1.name = "CardItem1";
+        rect1.resize(260, 44);
+        rect1.fills = [{ type: "SOLID", color: { r: 0.93, g: 0.94, b: 0.98 } }];
+        rect1.cornerRadius = 6;
+        const rect2 = figma.createRectangle();
+        rect2.name = "CardItem2";
+        rect2.resize(260, 44);
+        rect2.fills = [{ type: "SOLID", color: { r: 0.88, g: 0.9, b: 0.96 } }];
+        rect2.cornerRadius = 6;
+        frame.appendChild(rect1);
+        frame.appendChild(rect2);
+        break;
+      }
+      case "layer-naming": {
+        frame.name = "Frame 12";
+        frame.resize(300, 180);
+        frame.layoutMode = "VERTICAL";
+        frame.itemSpacing = 12;
+        frame.paddingLeft = 16;
+        frame.paddingRight = 16;
+        frame.paddingTop = 16;
+        frame.paddingBottom = 16;
+        const shape = figma.createRectangle();
+        shape.name = "Rectangle 4";
+        shape.resize(268, 80);
+        shape.fills = [{ type: "SOLID", color: { r: 0.92, g: 0.93, b: 0.95 } }];
+        const textInner = figma.createText();
+        textInner.characters = "Rename layers in the left sidebar to meaningful names.";
+        textInner.fontSize = 12;
+        textInner.fills = [{ type: "SOLID", color: { r: 0.2, g: 0.2, b: 0.2 } }];
+        const group = figma.group([textInner], frame);
+        group.name = "Group 3";
+        frame.appendChild(shape);
+        frame.appendChild(group);
+        break;
+      }
+      case "auto-layout": {
+        frame.name = "FeatureFrame";
+        frame.resize(320, 180);
+        frame.layoutMode = "NONE";
+        const item1 = figma.createRectangle();
+        item1.name = "IconBox";
+        item1.resize(40, 40);
+        item1.x = 20;
+        item1.y = 20;
+        item1.fills = [{ type: "SOLID", color: { r: 0.39, g: 0.4, b: 0.95 } }];
+        item1.cornerRadius = 8;
+        const item2 = figma.createText();
+        item2.characters = "Feature Headline";
+        item2.fontSize = 16;
+        item2.fontName = { family: "Inter", style: "Bold" };
+        item2.x = 20;
+        item2.y = 75;
+        item2.fills = [{ type: "SOLID", color: { r: 0.1, g: 0.1, b: 0.1 } }];
+        const item3 = figma.createText();
+        item3.characters = "Select outer frame and press Shift+A to turn into Auto Layout.";
+        item3.fontSize = 12;
+        item3.x = 20;
+        item3.y = 110;
+        item3.fills = [{ type: "SOLID", color: { r: 0.4, g: 0.4, b: 0.4 } }];
+        frame.appendChild(item1);
+        frame.appendChild(item2);
+        frame.appendChild(item3);
+        break;
+      }
+    }
+    frame.x = 100;
+    frame.y = 100;
+    practicePage.selection = [frame];
+    figma.viewport.scrollAndZoomIntoView([frame]);
+    return frame.id;
+  }
+  async function verifyCurrentPractice(skill, frameId) {
+    const node = figma.getNodeById(frameId);
+    if (!node || node.type !== "FRAME") {
+      return {
+        passed: false,
+        skill,
+        remainingFindings: [],
+        message: 'Practice frame was deleted or not found. Click "Set up practice frame" to recreate it.'
+      };
+    }
+    const facts = await extractDesignFacts(node);
+    return verifyPracticeFrame(skill, facts);
+  }
+
+  // src/core/learner/state.ts
+  function getTodayDateString() {
+    const now = /* @__PURE__ */ new Date();
+    return now.toISOString().split("T")[0];
+  }
+  function createDefaultLearnerState() {
+    const today = getTodayDateString();
+    return {
+      xp: 0,
+      streakDays: 0,
+      lastActiveDate: "",
+      skills: {
+        "contrast": { box: 0, dueDate: today, attempts: 0 },
+        "spacing-grid": { box: 0, dueDate: today, attempts: 0 },
+        "layer-naming": { box: 0, dueDate: today, attempts: 0 },
+        "auto-layout": { box: 0, dueDate: today, attempts: 0 }
+      },
+      completedLessons: []
+    };
+  }
+  function sanitizeLearnerState(raw) {
+    if (!raw || typeof raw !== "object") {
+      return createDefaultLearnerState();
+    }
+    const defaultState = createDefaultLearnerState();
+    const xp = typeof raw.xp === "number" && raw.xp >= 0 ? raw.xp : defaultState.xp;
+    const streakDays = typeof raw.streakDays === "number" && raw.streakDays >= 0 ? raw.streakDays : defaultState.streakDays;
+    const lastActiveDate = typeof raw.lastActiveDate === "string" ? raw.lastActiveDate : "";
+    const completedLessons = Array.isArray(raw.completedLessons) ? raw.completedLessons : [];
+    const skills = { ...defaultState.skills };
+    const validSkills = ["contrast", "spacing-grid", "layer-naming", "auto-layout"];
+    for (const s of validSkills) {
+      if (raw.skills && raw.skills[s] && typeof raw.skills[s] === "object") {
+        const box = raw.skills[s].box >= 0 && raw.skills[s].box <= 4 ? raw.skills[s].box : 0;
+        const dueDate = typeof raw.skills[s].dueDate === "string" ? raw.skills[s].dueDate : getTodayDateString();
+        const attempts = typeof raw.skills[s].attempts === "number" ? raw.skills[s].attempts : 0;
+        skills[s] = { box, dueDate, attempts };
+      }
+    }
+    return {
+      xp,
+      streakDays,
+      lastActiveDate,
+      skills,
+      completedLessons
+    };
+  }
+
+  // src/adapters/figma/storage.ts
+  var STORAGE_KEY = "sousartist_learner_state_v1";
+  async function loadLearnerState() {
+    try {
+      const raw = await figma.clientStorage.getAsync(STORAGE_KEY);
+      return sanitizeLearnerState(raw);
+    } catch (err) {
+      console.warn("Failed to load from clientStorage, resetting state:", err);
+      return createDefaultLearnerState();
+    }
+  }
+  async function saveLearnerState(state) {
+    try {
+      await figma.clientStorage.setAsync(STORAGE_KEY, state);
+    } catch (err) {
+      console.error("Failed to save to clientStorage:", err);
+    }
+  }
+
+  // src/core/learner/leitner.ts
+  var REVIEW_INTERVALS_DAYS = [1, 3, 7, 14, 30];
+  function addDays(dateStr, days) {
+    const d = new Date(dateStr);
+    d.setDate(d.getDate() + days);
+    return d.toISOString().split("T")[0];
+  }
+  function advanceLeitnerBox(state, skill, currentDate) {
+    const skillData = state.skills[skill] || { box: 0, dueDate: currentDate, attempts: 0 };
+    const nextBox = Math.min(4, skillData.box + 1);
+    const interval = REVIEW_INTERVALS_DAYS[nextBox];
+    const nextDueDate = addDays(currentDate, interval);
+    return {
+      ...state,
+      skills: {
+        ...state.skills,
+        [skill]: {
+          box: nextBox,
+          dueDate: nextDueDate,
+          attempts: skillData.attempts + 1
+        }
+      }
+    };
+  }
+  function resetLeitnerOnAuditFailure(state, failedSkills, currentDate) {
+    let changed = false;
+    const newSkills = { ...state.skills };
+    const droppedSkills = [];
+    for (const s of failedSkills) {
+      if (newSkills[s] && newSkills[s].box > 0) {
+        droppedSkills.push(s);
+        newSkills[s] = {
+          box: 0,
+          dueDate: currentDate,
+          attempts: newSkills[s].attempts
+        };
+        changed = true;
+      }
+    }
+    return {
+      updatedState: changed ? { ...state, skills: newSkills } : state,
+      droppedSkills
+    };
+  }
+
+  // src/core/learner/xp.ts
+  function calculateLessonXp(options) {
+    const base = options.isFirstPass ? 10 : 5;
+    const noHintBonus = options.hintsUsedCount === 0 ? 5 : 0;
+    const streakBonus = Math.min(10, options.currentStreakDays * 2);
+    const earnedXp = base + noHintBonus + streakBonus;
+    return {
+      earnedXp,
+      breakdown: {
+        base,
+        noHintBonus,
+        streakBonus
+      }
+    };
+  }
+  function updateStreak(lastActiveDate, today, currentStreak) {
+    if (!lastActiveDate) {
+      return 1;
+    }
+    if (lastActiveDate === today) {
+      return currentStreak;
+    }
+    const lastDate = new Date(lastActiveDate);
+    const nowDate = new Date(today);
+    const diffTime = nowDate.getTime() - lastDate.getTime();
+    const diffDays = Math.round(diffTime / (1e3 * 3600 * 24));
+    if (diffDays === 1) {
+      return currentStreak + 1;
+    } else if (diffDays > 1) {
+      return 1;
+    }
+    return currentStreak;
+  }
+  function recordLessonCompletion(state, lessonId, hintsUsedCount, today) {
+    const isFirstPass = !state.completedLessons.includes(lessonId);
+    const newStreak = updateStreak(state.lastActiveDate, today, state.streakDays);
+    const { earnedXp } = calculateLessonXp({
+      isFirstPass,
+      hintsUsedCount,
+      currentStreakDays: newStreak
+    });
+    const completed = isFirstPass ? [...state.completedLessons, lessonId] : state.completedLessons;
+    const updatedState = {
+      ...state,
+      xp: state.xp + earnedXp,
+      streakDays: newStreak,
+      lastActiveDate: today,
+      completedLessons: completed
+    };
+    return {
+      updatedState,
+      earnedXp
+    };
+  }
+
   // src/code.ts
   figma.showUI(__html__, { width: 380, height: 640, themeColors: true });
+  var currentPracticeFrameId = null;
+  var currentPracticeSkill = null;
   figma.ui.onmessage = async (msg) => {
     switch (msg.type) {
+      case "INIT_APP": {
+        const state = await loadLearnerState();
+        figma.ui.postMessage({
+          type: "LEARNER_STATE_LOADED",
+          state
+        });
+        break;
+      }
       case "GET_SELECTION_COUNT": {
         const count = figma.currentPage.selection.length;
         figma.ui.postMessage({
@@ -361,6 +725,27 @@
         try {
           const facts = await extractDesignFacts(figma.currentPage);
           const audit = analyzeAll(facts);
+          if (figma.currentPage.name !== "SousArtist Practice") {
+            const failedSkills = Object.keys(audit.bySkill).filter(
+              (k) => audit.bySkill[k].count > 0
+            );
+            if (failedSkills.length > 0) {
+              const state = await loadLearnerState();
+              const { updatedState, droppedSkills } = resetLeitnerOnAuditFailure(
+                state,
+                failedSkills,
+                getTodayDateString()
+              );
+              if (droppedSkills.length > 0) {
+                await saveLearnerState(updatedState);
+                figma.ui.postMessage({
+                  type: "LEITNER_DROPPED",
+                  droppedSkills,
+                  state: updatedState
+                });
+              }
+            }
+          }
           figma.ui.postMessage({
             type: "AUDIT_RESULTS",
             audit,
@@ -370,6 +755,78 @@
           figma.ui.postMessage({
             type: "AUDIT_ERROR",
             error: err?.message || "Failed to audit current page."
+          });
+        }
+        break;
+      }
+      case "BUILD_PRACTICE": {
+        try {
+          const skill = msg.skill;
+          const frameId = await buildPracticeFrame(skill);
+          currentPracticeFrameId = frameId;
+          currentPracticeSkill = skill;
+          figma.ui.postMessage({
+            type: "PRACTICE_FRAME_READY",
+            skill,
+            frameId
+          });
+        } catch (err) {
+          figma.ui.postMessage({
+            type: "PRACTICE_ERROR",
+            error: err?.message || "Failed to setup practice frame."
+          });
+        }
+        break;
+      }
+      case "VERIFY_PRACTICE": {
+        try {
+          const skill = msg.skill || currentPracticeSkill;
+          const frameId = msg.frameId || currentPracticeFrameId;
+          if (!frameId) {
+            figma.ui.postMessage({
+              type: "VERIFICATION_RESULT",
+              result: {
+                passed: false,
+                skill,
+                message: 'No practice frame found. Click "Set up practice frame" first.'
+              }
+            });
+            break;
+          }
+          const result = await verifyCurrentPractice(skill, frameId);
+          if (result.passed) {
+            const today = getTodayDateString();
+            let state = await loadLearnerState();
+            const { updatedState: stateWithXp, earnedXp } = recordLessonCompletion(
+              state,
+              `lesson-${skill}`,
+              msg.hintsUsedCount || 0,
+              today
+            );
+            const finalState = advanceLeitnerBox(stateWithXp, skill, today);
+            await saveLearnerState(finalState);
+            figma.ui.postMessage({
+              type: "VERIFICATION_RESULT",
+              result: {
+                ...result,
+                earnedXp,
+                state: finalState
+              }
+            });
+          } else {
+            figma.ui.postMessage({
+              type: "VERIFICATION_RESULT",
+              result
+            });
+          }
+        } catch (err) {
+          figma.ui.postMessage({
+            type: "VERIFICATION_RESULT",
+            result: {
+              passed: false,
+              skill: msg.skill,
+              message: err?.message || "Verification error."
+            }
           });
         }
         break;
@@ -391,7 +848,7 @@
         break;
       }
       default:
-        console.log("Main thread received:", msg.type);
+        console.log("Main thread unhandled message:", msg.type);
     }
   };
 })();
