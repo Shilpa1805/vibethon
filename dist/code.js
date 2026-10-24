@@ -203,11 +203,15 @@
       const isLarge = node.fontSize !== null && node.fontSize >= 24 || node.fontSize !== null && node.fontSize >= 18.66 && node.fontBold === true;
       const threshold = isLarge ? 3 : 4.5;
       if (ratio < threshold) {
+        const fontSizeStr = node.fontSize ? `${node.fontSize}px` : "text";
+        const styleStr = isLarge ? "large text" : "normal text";
         findings.push({
           id: `contrast-${node.id}`,
           skill: "contrast",
           severity: ratio < 3 ? "high" : "medium",
           nodeId: node.id,
+          nodeName: node.name || "Text Layer",
+          nodeType: "TEXT",
           measured: {
             ratio: Number(ratio.toFixed(2)),
             fontSize: node.fontSize ?? 14,
@@ -216,7 +220,16 @@
           expected: {
             minRatio: threshold,
             targetLevel: isLarge ? "WCAG Large Text (3.0:1)" : "WCAG Normal Text (4.5:1)"
-          }
+          },
+          summary: `Text "${node.name}" (${fontSizeStr}) has ${ratio.toFixed(1)}:1 contrast against its background. WCAG AA requires at least ${threshold}:1 for ${styleStr}.`,
+          whyItMatters: "Fails WCAG AA accessibility standards. Low contrast causes text to wash out under glare or dim lighting, and makes reading difficult for people with vision impairments or color blindness.",
+          actionSteps: [
+            `Click "Locate" to select "${node.name}" in your Figma canvas.`,
+            `In Figma's right-hand panel, go to the "Fill" section.`,
+            `Adjust the text color or container background to increase the luminance difference until contrast reaches at least ${threshold}:1.`,
+            `Re-run audit to verify the fix passes!`
+          ],
+          shortcutTip: 'Press "I" to open the Eyedropper and sample a high-contrast color.'
         });
       }
     }
@@ -236,6 +249,8 @@
             skill: "spacing-grid",
             severity: "medium",
             nodeId: node.id,
+            nodeName: node.name || "Auto Layout Frame",
+            nodeType: node.type,
             measured: {
               property: "itemSpacing",
               value: node.itemSpacing
@@ -243,12 +258,22 @@
             expected: {
               gridMultiple: 4,
               recommended8pt: nearest8
-            }
+            },
+            summary: `Frame "${node.name}" has itemSpacing of ${node.itemSpacing}px, which violates the 4pt/8pt grid system.`,
+            whyItMatters: "Arbitrary pixel gaps create subconscious visual noise and cause padding discrepancies when engineers translate Figma frames to CSS flex/grid.",
+            actionSteps: [
+              `Click "Locate" to select "${node.name}".`,
+              `In Figma's right-hand Auto layout panel, find "Gap between items".`,
+              `Change the gap from ${node.itemSpacing}px to ${nearest8}px (nearest 8pt multiple) or a multiple of 4.`,
+              `Re-run audit to confirm clean grid alignment!`
+            ],
+            shortcutTip: "Hold Shift + Arrow keys to nudge in 8px increments."
           });
         }
       }
       if (node.padding) {
         const sides = ["l", "r", "t", "b"];
+        const sideLabels = { l: "Left", r: "Right", t: "Top", b: "Bottom" };
         for (const side of sides) {
           const val = node.padding[side];
           if (val !== 0 && val % 4 !== 0) {
@@ -258,6 +283,8 @@
               skill: "spacing-grid",
               severity: "medium",
               nodeId: node.id,
+              nodeName: node.name || "Auto Layout Frame",
+              nodeType: node.type,
               measured: {
                 property: `padding-${side}`,
                 value: val
@@ -265,7 +292,15 @@
               expected: {
                 gridMultiple: 4,
                 recommended8pt: nearest8
-              }
+              },
+              summary: `Frame "${node.name}" has ${sideLabels[side]} padding of ${val}px, which is not divisible by 4.`,
+              whyItMatters: "Predictable spacing grids (4, 8, 16, 24px) establish cohesive visual rhythm and prevent awkward asymmetric margins.",
+              actionSteps: [
+                `Click "Locate" to select "${node.name}".`,
+                `In the right-hand Auto layout section, adjust ${sideLabels[side]} padding from ${val}px to ${nearest8}px.`,
+                `Re-run audit to verify!`
+              ],
+              shortcutTip: "Standard padding progression: 8px (compact), 16px (card default), 24px (spacious)."
             });
           }
         }
@@ -287,13 +322,24 @@
           skill: "layer-naming",
           severity: "low",
           nodeId: node.id,
+          nodeName: node.name,
+          nodeType: node.type,
           measured: {
             currentName: node.name,
             nodeType: node.type
           },
           expected: {
             guideline: "Semantic name describing purpose (e.g. CardHeader, IconWrapper, PrimaryBtn)"
-          }
+          },
+          summary: `${node.type} "${node.name}" uses a default Figma generated name that obscures its functional role.`,
+          whyItMatters: 'Default names like "Frame 12" or "Rectangle 4" slow down team collaboration, create confusion during component handoff, and make design systems harder to maintain.',
+          actionSteps: [
+            `Click "Locate" to highlight "${node.name}".`,
+            `Press "Cmd / Ctrl + R" (or double-click the layer name in Figma's left panel).`,
+            `Rename it using PascalCase or clear descriptive nouns (e.g. "UserProfileCard", "ThumbnailWrapper", or "ActionBtn").`,
+            `Re-run audit to confirm!`
+          ],
+          shortcutTip: 'Press "Cmd / Ctrl + R" to open the Rename dialog (supports batch rename).'
         });
       }
     }
@@ -310,6 +356,8 @@
           skill: "auto-layout",
           severity: "low",
           nodeId: node.id,
+          nodeName: node.name || "Frame",
+          nodeType: "FRAME",
           measured: {
             childCount: node.childCount,
             layoutMode: "NONE",
@@ -318,7 +366,17 @@
           expected: {
             layoutMode: "HORIZONTAL or VERTICAL",
             benefit: "Responsive flex flow and predictable spacing (Shift+A)"
-          }
+          },
+          summary: `Frame "${node.name}" contains ${node.childCount} child elements using manual absolute positioning instead of Auto Layout.`,
+          whyItMatters: "Without Auto Layout, dynamic content changes (like longer text or screen resizing) cause elements to overlap or misalign, requiring tedious manual tweaking and slowing down responsive coding.",
+          actionSteps: [
+            `Click "Locate" to highlight "${node.name}" on your canvas.`,
+            `Press "Shift + A" (or click the "+" icon next to Auto layout in the right sidebar).`,
+            `Choose your layout flow: Vertical (top-to-bottom stack) or Horizontal (side-by-side row).`,
+            `Set gap and padding to multiples of 4 or 8 (e.g., 12px or 16px).`,
+            `Re-run audit to confirm responsive alignment!`
+          ],
+          shortcutTip: 'Press "Shift + A" to instantly convert any selection or frame into Auto Layout.'
         });
       }
     }

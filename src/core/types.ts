@@ -35,8 +35,14 @@ export interface Finding {
   skill: SkillId;
   severity: 'high' | 'medium' | 'low';
   nodeId: string;
+  nodeName?: string;
+  nodeType?: string;
   measured: Record<string, number | string>;
   expected: Record<string, number | string>;
+  summary?: string;
+  whyItMatters?: string;
+  actionSteps?: string[];
+  shortcutTip?: string;
 }
 
 export interface SkillSummary {

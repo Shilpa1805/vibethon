@@ -166,20 +166,15 @@ function renderAuditResults(audit: AuditSummary, pageName: string) {
               ${summary.count}
             </span>
           </div>
-          <button class="btn-secondary btn-study" data-skill="${skill}" style="padding:4px 8px; font-size:11px;">
-            Study this
-          </button>
+          <span style="font-size:11px; color:var(--text-secondary);">
+            ${summary.high > 0 ? `<span style="color:var(--danger-color); font-weight:700;">${summary.high} High</span>` : ''}
+            ${summary.medium > 0 ? `<span style="color:var(--warning-color); font-weight:600;">${summary.medium} Med</span>` : ''}
+            ${summary.low > 0 ? `<span style="color:var(--text-secondary);">${summary.low} Low</span>` : ''}
+          </span>
         </div>
 
-        <div style="display:flex; gap:6px; font-size:11px;">
-          ${summary.high > 0 ? `<span style="color:var(--danger-color); font-weight:600;">${summary.high} High</span>` : ''}
-          ${summary.medium > 0 ? `<span style="color:var(--warning-color); font-weight:600;">${summary.medium} Med</span>` : ''}
-          ${summary.low > 0 ? `<span style="color:var(--text-secondary); font-weight:600;">${summary.low} Low</span>` : ''}
-        </div>
-
-        <div style="display:flex; flex-direction:column; gap:6px; max-height:160px; overflow-y:auto;">
-          ${skillFindings.slice(0, 5).map((f) => renderFindingItem(f)).join('')}
-          ${skillFindings.length > 5 ? `<div style="font-size:11px; color:var(--text-muted); text-align:center;">+${skillFindings.length - 5} more</div>` : ''}
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          ${skillFindings.map((f) => renderFindingItem(f)).join('')}
         </div>
       </div>
     `;
@@ -187,7 +182,39 @@ function renderAuditResults(audit: AuditSummary, pageName: string) {
 
   auditResults.innerHTML = html;
 
-  auditResults.querySelectorAll('.btn-study').forEach((btn) => {
+  // Wire finding header accordion toggles
+  auditResults.querySelectorAll('.finding-header').forEach((hdr) => {
+    hdr.addEventListener('click', (e) => {
+      // Don't toggle if the user clicked the Locate button directly
+      if ((e.target as HTMLElement).closest('.btn-inspect')) return;
+      const id = hdr.getAttribute('data-id');
+      const details = document.getElementById(`details-${id}`);
+      const arrow = document.getElementById(`arrow-${id}`);
+      if (details && arrow) {
+        const isHidden = details.style.display === 'none';
+        details.style.display = isHidden ? 'flex' : 'none';
+        arrow.textContent = isHidden ? '▲' : '▼';
+      }
+    });
+  });
+
+  // Wire "Ask Coach About This" button
+  auditResults.querySelectorAll('.btn-ask-about-finding').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const nodeName = btn.getAttribute('data-node-name') || 'layer';
+      const skill = btn.getAttribute('data-skill') || 'design';
+      const summary = btn.getAttribute('data-summary') || '';
+
+      switchTab('coach');
+      if (coachInput) {
+        coachInput.value = `How should I improve the ${skill} on layer "${nodeName}"? (${summary})`;
+        sendCoachMessage();
+      }
+    });
+  });
+
+  // Wire "Practice in Sandbox" button
+  auditResults.querySelectorAll('.btn-study-sandbox').forEach((btn) => {
     btn.addEventListener('click', () => {
       const skill = btn.getAttribute('data-skill') as SkillId;
       if (skill) {
@@ -198,8 +225,10 @@ function renderAuditResults(audit: AuditSummary, pageName: string) {
     });
   });
 
+  // Wire Locate buttons
   auditResults.querySelectorAll('.btn-inspect').forEach((btn) => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
       const nodeId = btn.getAttribute('data-node-id');
       if (nodeId) {
         parent.postMessage({ pluginMessage: { type: 'SELECT_NODE', nodeId } }, '*');
@@ -210,27 +239,100 @@ function renderAuditResults(audit: AuditSummary, pageName: string) {
 
 function renderFindingItem(f: Finding): string {
   let measuredStr = '';
+  let layerIcon = '📦';
   if (f.skill === 'contrast') {
-    measuredStr = `Ratio: ${f.measured.ratio}:1 (needs ${f.expected.minRatio}:1)`;
+    measuredStr = `Contrast Ratio: ${f.measured.ratio}:1 (needs ${f.expected.minRatio}:1)`;
+    layerIcon = '🔤';
   } else if (f.skill === 'spacing-grid') {
-    measuredStr = `${f.measured.property}: ${f.measured.value}px (use ${f.expected.recommended8pt}px)`;
+    measuredStr = `${f.measured.property}: ${f.measured.value}px (use multiple of 4, e.g. ${f.expected.recommended8pt}px)`;
+    layerIcon = '📐';
   } else if (f.skill === 'layer-naming') {
     measuredStr = `Name: "${f.measured.currentName}"`;
+    layerIcon = '🏷️';
   } else if (f.skill === 'auto-layout') {
-    measuredStr = `${f.measured.childCount} children without auto-layout`;
+    measuredStr = `${f.measured.childCount} children without Auto Layout`;
+    layerIcon = '📦';
   }
 
   const severityColor = f.severity === 'high' ? 'var(--danger-color)' : f.severity === 'medium' ? 'var(--warning-color)' : 'var(--text-secondary)';
+  const severityLabel = f.severity.toUpperCase();
+  const nodeTitle = f.nodeName ? `"${f.nodeName}"` : 'Selected Layer';
 
   return `
-    <div style="background:var(--bg-primary); border:1px solid var(--border-color); border-radius:4px; padding:6px 8px; display:flex; justify-content:space-between; align-items:center; font-size:11px;">
-      <div>
-        <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:${severityColor}; margin-right:4px;"></span>
-        <span>${measuredStr}</span>
+    <div class="finding-card" id="card-${f.id}" style="background:var(--bg-primary); border:1px solid var(--border-color); border-radius:6px; overflow:hidden; font-size:12px; transition:border-color 0.2s ease;">
+      <!-- Header Row -->
+      <div style="padding:10px 12px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" class="finding-header" data-id="${f.id}">
+        <div style="display:flex; align-items:center; gap:8px; min-width:0; flex:1;">
+          <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${severityColor}; flex-shrink:0;"></span>
+          <span style="font-size:14px; flex-shrink:0;">${layerIcon}</span>
+          <div style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+            <strong style="color:var(--text-primary); font-size:12px;">${nodeTitle}</strong>
+            <span style="color:var(--text-secondary); font-size:11px; margin-left:4px;">${measuredStr}</span>
+          </div>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:8px; flex-shrink:0; margin-left:8px;">
+          <button class="btn-inspect" data-node-id="${f.nodeId}" style="background:var(--bg-hover); border:1px solid var(--border-color); color:var(--accent-color); padding:3px 8px; border-radius:4px; cursor:pointer; font-size:11px; font-weight:600;" title="Highlight this layer in Figma">
+            Locate
+          </button>
+          <span class="finding-toggle-arrow" id="arrow-${f.id}" style="font-size:10px; color:var(--text-muted); width:14px; text-align:center;">▼</span>
+        </div>
       </div>
-      <button class="btn-inspect" data-node-id="${f.nodeId}" style="background:none; border:none; color:var(--accent-color); cursor:pointer; font-size:11px; text-decoration:underline;">
-        Locate
-      </button>
+
+      <!-- Expandable Component Betterment Body -->
+      <div class="finding-details" id="details-${f.id}" style="padding:0 12px 12px; border-top:1px solid var(--border-color); background:var(--bg-card); display:flex; flex-direction:column; gap:8px;">
+        <!-- Diagnostic Summary -->
+        <div style="margin-top:8px;">
+          <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin-bottom:2px;">
+            🔍 Component Diagnostic
+          </div>
+          <div style="color:var(--text-primary); font-size:12px; line-height:1.4;">
+            ${f.summary || measuredStr}
+          </div>
+        </div>
+
+        <!-- Why It Matters -->
+        ${f.whyItMatters ? `
+          <div>
+            <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin-bottom:2px;">
+              💡 Why It Matters for This Component
+            </div>
+            <div style="color:var(--text-muted); font-size:11px; line-height:1.4;">
+              ${f.whyItMatters}
+            </div>
+          </div>
+        ` : ''}
+
+        <!-- How To Fix Step-by-Step -->
+        ${f.actionSteps && f.actionSteps.length > 0 ? `
+          <div style="background:var(--bg-primary); padding:8px 10px; border-radius:6px; border:1px solid var(--border-color);">
+            <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--success-color); margin-bottom:4px;">
+              🛠️ Guided Fix Steps (Do in Figma)
+            </div>
+            <ol style="padding-left:18px; margin:0; font-size:11px; line-height:1.5; color:var(--text-primary);">
+              ${f.actionSteps.map(step => `<li>${step}</li>`).join('')}
+            </ol>
+          </div>
+        ` : ''}
+
+        <!-- Shortcut Tip -->
+        ${f.shortcutTip ? `
+          <div style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
+            <span>⚡</span>
+            <span><strong>Shortcut:</strong> ${f.shortcutTip}</span>
+          </div>
+        ` : ''}
+
+        <!-- Direct Actions -->
+        <div style="display:flex; gap:8px; margin-top:4px; padding-top:6px; border-top:1px solid var(--border-color);">
+          <button class="btn-ask-about-finding btn-secondary" data-node-name="${f.nodeName || 'layer'}" data-skill="${f.skill}" data-summary="${f.summary || measuredStr}" style="flex:1; padding:5px 8px; font-size:11px;">
+            💬 Ask Coach About This
+          </button>
+          <button class="btn-study-sandbox btn-secondary" data-skill="${f.skill}" style="padding:5px 8px; font-size:11px;" title="Open isolated 2-minute practice lesson">
+            📚 Practice in Sandbox
+          </button>
+        </div>
+      </div>
     </div>
   `;
 }

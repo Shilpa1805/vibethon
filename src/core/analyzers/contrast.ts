@@ -69,11 +69,16 @@ export function analyzeContrast(facts: DesignFacts): Finding[] {
     const threshold = isLarge ? 3.0 : 4.5;
 
     if (ratio < threshold) {
+      const fontSizeStr = node.fontSize ? `${node.fontSize}px` : 'text';
+      const styleStr = isLarge ? 'large text' : 'normal text';
+
       findings.push({
         id: `contrast-${node.id}`,
         skill: 'contrast',
         severity: ratio < 3.0 ? 'high' : 'medium',
         nodeId: node.id,
+        nodeName: node.name || 'Text Layer',
+        nodeType: 'TEXT',
         measured: {
           ratio: Number(ratio.toFixed(2)),
           fontSize: node.fontSize ?? 14,
@@ -83,6 +88,15 @@ export function analyzeContrast(facts: DesignFacts): Finding[] {
           minRatio: threshold,
           targetLevel: isLarge ? 'WCAG Large Text (3.0:1)' : 'WCAG Normal Text (4.5:1)',
         },
+        summary: `Text "${node.name}" (${fontSizeStr}) has ${ratio.toFixed(1)}:1 contrast against its background. WCAG AA requires at least ${threshold}:1 for ${styleStr}.`,
+        whyItMatters: 'Fails WCAG AA accessibility standards. Low contrast causes text to wash out under glare or dim lighting, and makes reading difficult for people with vision impairments or color blindness.',
+        actionSteps: [
+          `Click "Locate" to select "${node.name}" in your Figma canvas.`,
+          `In Figma's right-hand panel, go to the "Fill" section.`,
+          `Adjust the text color or container background to increase the luminance difference until contrast reaches at least ${threshold}:1.`,
+          `Re-run audit to verify the fix passes!`,
+        ],
+        shortcutTip: 'Press "I" to open the Eyedropper and sample a high-contrast color.',
       });
     }
   }
