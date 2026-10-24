@@ -15,6 +15,8 @@
 - `figma.root.children` for page listing
 - `figma.setCurrentPageAsync` (dynamic-page access requirement)
 - Node traversal handling `figma.mixed` for fills, typography, layout, and padding.
+- `node.setPluginData(key, value)` and `node.getPluginData(key)` for persistent node metadata without name collisions (verified via `https://www.figma.com/plugin-docs/api/properties/nodes-setplugindata/` on 2026-10-25).
+- Manifest `networkAccess.devAllowedDomains`: Official Figma field for specifying localhost/dev HTTP servers separate from production allowed domains (verified via `https://www.figma.com/plugin-docs/manifest/` on 2026-10-25).
 
 ## Token Economics & Metrics
 - Diagnosis payload: ~180 tokens (compact JSON with skill counts + 3 measured/expected samples).
