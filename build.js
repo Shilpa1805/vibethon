@@ -9,6 +9,11 @@ async function buildPlugin() {
     fs.mkdirSync('dist', { recursive: true });
   }
 
+  const proxyUrl = process.env.SOUSARTIST_PROXY_URL || '';
+  const defines = {
+    '__SOUSARTIST_PROXY_URL__': JSON.stringify(proxyUrl),
+  };
+
   // 1. Build plugin main thread (code.ts -> dist/code.js)
   const codeConfig = {
     entryPoints: ['src/code.ts'],
@@ -17,6 +22,7 @@ async function buildPlugin() {
     target: 'es2020',
     outfile: 'dist/code.js',
     logLevel: 'info',
+    define: defines,
   };
 
   // 2. Build UI thread (src/ui/ui.ts inlined into dist/ui.html)
@@ -28,6 +34,7 @@ async function buildPlugin() {
       format: 'iife',
       target: 'es2020',
       logLevel: 'info',
+      define: defines,
     });
 
     const bundledJs = uiResult.outputFiles[0].text;

@@ -1,5 +1,5 @@
 // SousArtist - Provider-Agnostic LLM Client
-// Resilient: 8s timeout, jittered retry, SHA-256 payload cache, offline degradation
+// Resilient: 8s timeout, jittered retry, payload cache, offline degradation
 
 export interface LlmClient {
   generateText(prompt: string, systemPrompt?: string): Promise<string>;
@@ -10,14 +10,16 @@ export interface RequestPayload {
   systemPrompt?: string;
 }
 
+declare const __SOUSARTIST_PROXY_URL__: string | undefined;
+
 export class ResilientLlmClient implements LlmClient {
   private cache = new Map<string, string>();
-  private apiKey: string;
-  private endpoint: string;
+  private proxyUrl: string;
 
-  constructor(options?: { apiKey?: string; endpoint?: string }) {
-    this.apiKey = options?.apiKey || (typeof process !== 'undefined' ? process.env?.SOUSARTIST_LLM_KEY || '' : '');
-    this.endpoint = options?.endpoint || 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+  constructor(options?: { proxyUrl?: string }) {
+    this.proxyUrl =
+      options?.proxyUrl ??
+      (typeof __SOUSARTIST_PROXY_URL__ !== 'undefined' ? __SOUSARTIST_PROXY_URL__ : '');
   }
 
   // Simple string hash for payload caching
@@ -40,8 +42,8 @@ export class ResilientLlmClient implements LlmClient {
       return this.cache.get(cacheKey)!;
     }
 
-    if (!this.apiKey) {
-      throw new Error('OFFLINE_NO_KEY');
+    if (!this.proxyUrl) {
+      throw new Error('OFFLINE_NO_PROXY');
     }
 
     let lastError: any = null;
@@ -57,22 +59,10 @@ export class ResilientLlmClient implements LlmClient {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
 
-        const url = `${this.endpoint}?key=${this.apiKey}`;
-        const body = {
-          contents: [
-            ...(systemPrompt ? [{ role: 'user', parts: [{ text: systemPrompt }] }] : []),
-            { role: 'user', parts: [{ text: prompt }] },
-          ],
-          generationConfig: {
-            temperature: 0.2,
-            maxOutputTokens: 150,
-          },
-        };
-
-        const response = await fetch(url, {
+        const response = await fetch(this.proxyUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
+          body: JSON.stringify({ prompt, systemPrompt }),
           signal: controller.signal,
         });
 
@@ -83,11 +73,12 @@ export class ResilientLlmClient implements LlmClient {
         }
 
         const data = await response.json();
-        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+        const text = typeof data?.text === 'string' ? data.text.trim() : '';
         if (text) {
           this.cache.set(cacheKey, text);
           return text;
         }
+        throw new Error('EMPTY_RESPONSE');
       } catch (err: any) {
         lastError = err;
       }

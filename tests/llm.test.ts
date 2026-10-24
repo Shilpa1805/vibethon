@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { rankSkills, getCannedRedirect } from '../src/core/llm/fallback';
 import { SousArtistCoach } from '../src/core/llm/coach';
+import { ResilientLlmClient } from '../src/core/llm/client';
 import { AuditSummary } from '../src/core/types';
 
 describe('Fallback & Skill Ranking', () => {
@@ -76,5 +77,84 @@ describe('SousArtistCoach Orchestration', () => {
     const diag = await coach.diagnoseGaps(summary);
     expect(diag.offline).toBe(true);
     expect(diag.order[0]).toBe('contrast');
+  });
+});
+
+describe('ResilientLlmClient (Proxy Integration)', () => {
+  it('throws OFFLINE_NO_PROXY when proxy URL is empty', async () => {
+    const client = new ResilientLlmClient({ proxyUrl: '' });
+    await expect(client.generateText('test prompt')).rejects.toThrow('OFFLINE_NO_PROXY');
+  });
+
+  it('handles success path and returns extracted text', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url: any, opts: any) => {
+      expect(url).toBe('https://proxy.example.com/api/llm');
+      const body = JSON.parse(opts.body);
+      expect(body.prompt).toBe('test prompt');
+      return new Response(JSON.stringify({ text: 'Consider darkening the text color.' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    try {
+      const client = new ResilientLlmClient({ proxyUrl: 'https://proxy.example.com/api/llm' });
+      const text = await client.generateText('test prompt', 'system instructions');
+      expect(text).toBe('Consider darkening the text color.');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('handles HTTP 429 rate limiting error', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => {
+      return new Response(JSON.stringify({ error: 'Rate limit exceeded.' }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    try {
+      const client = new ResilientLlmClient({ proxyUrl: 'https://proxy.example.com/api/llm' });
+      await expect(client.generateText('test prompt')).rejects.toThrow('HTTP_429');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('handles fetch timeout', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (_url: any, opts: any) => {
+      // Simulate AbortError triggered by timeout
+      const err = new Error('The operation was aborted');
+      err.name = 'AbortError';
+      throw err;
+    };
+
+    try {
+      const client = new ResilientLlmClient({ proxyUrl: 'https://proxy.example.com/api/llm' });
+      await expect(client.generateText('test timeout')).rejects.toThrow('The operation was aborted');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('handles empty-text response with EMPTY_RESPONSE error', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => {
+      return new Response(JSON.stringify({ text: '   ' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    try {
+      const client = new ResilientLlmClient({ proxyUrl: 'https://proxy.example.com/api/llm' });
+      await expect(client.generateText('test empty text')).rejects.toThrow('EMPTY_RESPONSE');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

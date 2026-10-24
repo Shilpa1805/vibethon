@@ -8,10 +8,13 @@
   "documentAccess": "dynamic-page",
   "networkAccess": {
     "allowedDomains": [
-      "https://generativelanguage.googleapis.com",
-      "https://api.openai.com",
-      "http://localhost"
+      "https://sousartist.vercel.app",
+      "https://*.vercel.app"
     ],
-    "reasoning": "Sends anonymised structural design numbers to generate coaching hints."
+    "devAllowedDomains": [
+      "http://localhost",
+      "http://localhost:3000"
+    ],
+    "reasoning": "Sends anonymised structural design numbers to generate coaching hints via the SousArtist proxy."
   }
 }
