@@ -60,15 +60,18 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: any }) => {
         } else if (scope === 'COMPONENTS') {
           const componentNodes: SceneNode[] = [];
           function findComponents(parent: PageNode | SceneNode) {
-            if ('children' in parent && Array.isArray(parent.children)) {
-              for (const child of parent.children) {
-                if (child.type === 'COMPONENT' || child.type === 'COMPONENT_SET' || child.type === 'INSTANCE') {
-                  componentNodes.push(child);
-                } else if ('children' in child) {
-                  findComponents(child);
+            try {
+              const ch = (parent as any).children;
+              if (ch && Array.isArray(ch)) {
+                for (const child of ch) {
+                  if (child.type === 'COMPONENT' || child.type === 'COMPONENT_SET' || child.type === 'INSTANCE') {
+                    componentNodes.push(child);
+                  } else if ((child as any).children) {
+                    findComponents(child);
+                  }
                 }
               }
-            }
+            } catch (e) {}
           }
           findComponents(figma.currentPage);
 

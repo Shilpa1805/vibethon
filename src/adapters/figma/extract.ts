@@ -12,7 +12,7 @@ export async function extractDesignFacts(rootNode: SceneNode | PageNode): Promis
   let truncated = false;
 
   // For dynamic-page access, ensure page contents are loaded
-  if ('loadAsync' in rootNode && typeof (rootNode as any).loadAsync === 'function') {
+  if (typeof (rootNode as any).loadAsync === 'function') {
     try {
       await (rootNode as any).loadAsync();
     } catch (e) {
@@ -109,36 +109,65 @@ export async function extractDesignFacts(rootNode: SceneNode | PageNode): Promis
       }
 
       let fillColor: RGB | null = null;
-      if ('fills' in sceneNode) {
-        fillColor = extractSolidColor((sceneNode as any).fills);
+      try {
+        const rawFills = (sceneNode as any).fills;
+        if (rawFills && rawFills !== (figma as any).mixed) {
+          fillColor = extractSolidColor(rawFills);
+        }
+      } catch (e) {
+        // Safe fallback
       }
 
       let layoutMode: FactNode['layoutMode'] = 'NONE';
       let itemSpacing: number | null = null;
       let padding: FactNode['padding'] = null;
 
-      if ('layoutMode' in sceneNode) {
-        const frame = sceneNode as FrameNode;
-        if (frame.layoutMode === 'HORIZONTAL' || frame.layoutMode === 'VERTICAL') {
-          layoutMode = frame.layoutMode;
+      try {
+        const anyNode = sceneNode as any;
+        const rawMode = anyNode.layoutMode;
+        if (rawMode === 'HORIZONTAL' || rawMode === 'VERTICAL') {
+          layoutMode = rawMode;
+        } else if (rawMode === 'GRID') {
+          layoutMode = 'VERTICAL'; // Treat GRID auto-layout as auto-layout
         }
 
-        if ('itemSpacing' in frame && (frame as any).itemSpacing !== figma.mixed) {
-          itemSpacing = typeof frame.itemSpacing === 'number' ? frame.itemSpacing : null;
+        const rawSpacing = anyNode.itemSpacing;
+        if (typeof rawSpacing === 'number' && rawSpacing !== (figma as any).mixed) {
+          itemSpacing = rawSpacing;
         }
 
-        const l = 'paddingLeft' in frame && typeof frame.paddingLeft === 'number' ? frame.paddingLeft : 0;
-        const r = 'paddingRight' in frame && typeof frame.paddingRight === 'number' ? frame.paddingRight : 0;
-        const t = 'paddingTop' in frame && typeof frame.paddingTop === 'number' ? frame.paddingTop : 0;
-        const b = 'paddingBottom' in frame && typeof frame.paddingBottom === 'number' ? frame.paddingBottom : 0;
-        padding = { l, r, t, b };
+        const pl = anyNode.paddingLeft;
+        const pr = anyNode.paddingRight;
+        const pt = anyNode.paddingTop;
+        const pb = anyNode.paddingBottom;
+        if (typeof pl === 'number' || typeof pr === 'number' || typeof pt === 'number' || typeof pb === 'number') {
+          padding = {
+            l: typeof pl === 'number' ? pl : 0,
+            r: typeof pr === 'number' ? pr : 0,
+            t: typeof pt === 'number' ? pt : 0,
+            b: typeof pb === 'number' ? pb : 0,
+          };
+        }
+      } catch (e) {
+        // Safe fallback for nodes without layout properties
       }
 
-      const childCount = 'children' in sceneNode && Array.isArray(sceneNode.children)
-        ? sceneNode.children.length
-        : 0;
+      let childCount = 0;
+      try {
+        const ch = (sceneNode as any).children;
+        if (ch && Array.isArray(ch)) {
+          childCount = ch.length;
+        }
+      } catch (e) {}
 
       const isComponent = sceneNode.type === 'COMPONENT' || sceneNode.type === 'INSTANCE' || (sceneNode as any).type === 'COMPONENT_SET';
+
+      let width: number | undefined = undefined;
+      let height: number | undefined = undefined;
+      try {
+        if (typeof (sceneNode as any).width === 'number') width = (sceneNode as any).width;
+        if (typeof (sceneNode as any).height === 'number') height = (sceneNode as any).height;
+      } catch (e) {}
 
       const factNode: FactNode = {
         id: sceneNode.id,
@@ -153,8 +182,8 @@ export async function extractDesignFacts(rootNode: SceneNode | PageNode): Promis
         fontBold,
         textColor,
         fillColor,
-        width: 'width' in sceneNode ? sceneNode.width : undefined,
-        height: 'height' in sceneNode ? sceneNode.height : undefined,
+        width,
+        height,
         hue: getHslHue(textColor || fillColor),
         isComponent,
         componentName: isComponent ? sceneNode.name : null,
@@ -163,12 +192,15 @@ export async function extractDesignFacts(rootNode: SceneNode | PageNode): Promis
       nodes.push(factNode);
     }
 
-    if ('children' in current && Array.isArray(current.children)) {
-      for (const child of current.children) {
-        walk(child);
-        if (nodes.length >= MAX_NODE_CAP) break;
+    try {
+      const children = (current as any).children;
+      if (children && Array.isArray(children)) {
+        for (const child of children) {
+          walk(child);
+          if (nodes.length >= MAX_NODE_CAP) break;
+        }
       }
-    }
+    } catch (e) {}
   }
 
   walk(rootNode);

@@ -254,6 +254,23 @@ function renderAuditResults(audit: AuditSummary, pageName: string) {
       }
     });
   });
+
+  // Wire Re-check buttons
+  auditResults.querySelectorAll('.btn-recheck-finding').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const nodeId = btn.getAttribute('data-node-id');
+      if (nodeId) {
+        parent.postMessage({ pluginMessage: { type: 'SELECT_NODE', nodeId } }, '*');
+      }
+      if (btnRunAudit) {
+        btnRunAudit.click();
+      } else {
+        parent.postMessage({ pluginMessage: { type: 'RUN_AUDIT', scope: currentAuditScope } }, '*');
+      }
+      showToast('Re-scanning for updates...');
+    });
+  });
 }
 
 function renderFindingItem(f: Finding): string {
@@ -344,6 +361,9 @@ function renderFindingItem(f: Finding): string {
 
         <!-- Direct Actions -->
         <div style="display:flex; gap:6px; margin-top:4px; padding-top:6px; border-top:1px solid var(--border-color); flex-wrap:wrap;">
+          <button class="btn-recheck-finding btn-primary" data-node-id="${f.nodeId}" data-id="${f.id}" style="padding:5px 10px; font-size:11px; font-weight:600;" title="Re-check this component right now">
+            ↻ Re-check
+          </button>
           <button class="btn-ask-about-finding btn-secondary" data-node-name="${f.nodeName || 'layer'}" data-skill="${f.skill}" data-summary="${f.summary || measuredStr}" style="flex:1; min-width:130px; padding:5px 8px; font-size:11px;">
             💬 Ask Coach About This
           </button>

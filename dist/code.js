@@ -5,7 +5,7 @@
   async function extractDesignFacts(rootNode) {
     const nodes = [];
     let truncated = false;
-    if ("loadAsync" in rootNode && typeof rootNode.loadAsync === "function") {
+    if (typeof rootNode.loadAsync === "function") {
       try {
         await rootNode.loadAsync();
       } catch (e) {
@@ -90,28 +90,58 @@
           }
         }
         let fillColor = null;
-        if ("fills" in sceneNode) {
-          fillColor = extractSolidColor(sceneNode.fills);
+        try {
+          const rawFills = sceneNode.fills;
+          if (rawFills && rawFills !== figma.mixed) {
+            fillColor = extractSolidColor(rawFills);
+          }
+        } catch (e) {
         }
         let layoutMode = "NONE";
         let itemSpacing = null;
         let padding = null;
-        if ("layoutMode" in sceneNode) {
-          const frame = sceneNode;
-          if (frame.layoutMode === "HORIZONTAL" || frame.layoutMode === "VERTICAL") {
-            layoutMode = frame.layoutMode;
+        try {
+          const anyNode = sceneNode;
+          const rawMode = anyNode.layoutMode;
+          if (rawMode === "HORIZONTAL" || rawMode === "VERTICAL") {
+            layoutMode = rawMode;
+          } else if (rawMode === "GRID") {
+            layoutMode = "VERTICAL";
           }
-          if ("itemSpacing" in frame && frame.itemSpacing !== figma.mixed) {
-            itemSpacing = typeof frame.itemSpacing === "number" ? frame.itemSpacing : null;
+          const rawSpacing = anyNode.itemSpacing;
+          if (typeof rawSpacing === "number" && rawSpacing !== figma.mixed) {
+            itemSpacing = rawSpacing;
           }
-          const l = "paddingLeft" in frame && typeof frame.paddingLeft === "number" ? frame.paddingLeft : 0;
-          const r = "paddingRight" in frame && typeof frame.paddingRight === "number" ? frame.paddingRight : 0;
-          const t = "paddingTop" in frame && typeof frame.paddingTop === "number" ? frame.paddingTop : 0;
-          const b = "paddingBottom" in frame && typeof frame.paddingBottom === "number" ? frame.paddingBottom : 0;
-          padding = { l, r, t, b };
+          const pl = anyNode.paddingLeft;
+          const pr = anyNode.paddingRight;
+          const pt = anyNode.paddingTop;
+          const pb = anyNode.paddingBottom;
+          if (typeof pl === "number" || typeof pr === "number" || typeof pt === "number" || typeof pb === "number") {
+            padding = {
+              l: typeof pl === "number" ? pl : 0,
+              r: typeof pr === "number" ? pr : 0,
+              t: typeof pt === "number" ? pt : 0,
+              b: typeof pb === "number" ? pb : 0
+            };
+          }
+        } catch (e) {
         }
-        const childCount = "children" in sceneNode && Array.isArray(sceneNode.children) ? sceneNode.children.length : 0;
+        let childCount = 0;
+        try {
+          const ch = sceneNode.children;
+          if (ch && Array.isArray(ch)) {
+            childCount = ch.length;
+          }
+        } catch (e) {
+        }
         const isComponent = sceneNode.type === "COMPONENT" || sceneNode.type === "INSTANCE" || sceneNode.type === "COMPONENT_SET";
+        let width = void 0;
+        let height = void 0;
+        try {
+          if (typeof sceneNode.width === "number") width = sceneNode.width;
+          if (typeof sceneNode.height === "number") height = sceneNode.height;
+        } catch (e) {
+        }
         const factNode = {
           id: sceneNode.id,
           type: nodeType,
@@ -125,19 +155,23 @@
           fontBold,
           textColor,
           fillColor,
-          width: "width" in sceneNode ? sceneNode.width : void 0,
-          height: "height" in sceneNode ? sceneNode.height : void 0,
+          width,
+          height,
           hue: getHslHue(textColor || fillColor),
           isComponent,
           componentName: isComponent ? sceneNode.name : null
         };
         nodes.push(factNode);
       }
-      if ("children" in current && Array.isArray(current.children)) {
-        for (const child of current.children) {
-          walk(child);
-          if (nodes.length >= MAX_NODE_CAP) break;
+      try {
+        const children = current.children;
+        if (children && Array.isArray(children)) {
+          for (const child of children) {
+            walk(child);
+            if (nodes.length >= MAX_NODE_CAP) break;
+          }
         }
+      } catch (e) {
       }
     }
     walk(rootNode);
@@ -818,14 +852,18 @@
             facts = await extractDesignFacts(selected);
           } else if (scope === "COMPONENTS") {
             let findComponents2 = function(parent) {
-              if ("children" in parent && Array.isArray(parent.children)) {
-                for (const child of parent.children) {
-                  if (child.type === "COMPONENT" || child.type === "COMPONENT_SET" || child.type === "INSTANCE") {
-                    componentNodes.push(child);
-                  } else if ("children" in child) {
-                    findComponents2(child);
+              try {
+                const ch = parent.children;
+                if (ch && Array.isArray(ch)) {
+                  for (const child of ch) {
+                    if (child.type === "COMPONENT" || child.type === "COMPONENT_SET" || child.type === "INSTANCE") {
+                      componentNodes.push(child);
+                    } else if (child.children) {
+                      findComponents2(child);
+                    }
                   }
                 }
+              } catch (e) {
               }
             };
             var findComponents = findComponents2;
