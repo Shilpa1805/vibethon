@@ -1012,7 +1012,513 @@
     };
   }
 
+  // src/core/llm/client.ts
+  var ResilientLlmClient = class {
+    constructor(options) {
+      this.cache = /* @__PURE__ */ new Map();
+      this.proxyUrl = options?.proxyUrl ?? (true ? "" : "");
+    }
+    // djb2 32-bit string hash for payload cache deduplication.
+    // This is NOT a cryptographic hash — it prevents duplicate LLM calls for identical
+    // prompt+system pairs within a single plugin session, not across restarts.
+    hashPayload(payload) {
+      const str = `${payload.systemPrompt || ""}::${payload.prompt}`;
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = (hash << 5) - hash + char;
+        hash |= 0;
+      }
+      return `hash_${hash}`;
+    }
+    async generateText(prompt, systemPrompt) {
+      const payload = { prompt, systemPrompt };
+      const cacheKey = this.hashPayload(payload);
+      if (this.cache.has(cacheKey)) {
+        return this.cache.get(cacheKey);
+      }
+      if (!this.proxyUrl) {
+        throw new Error("OFFLINE_NO_PROXY");
+      }
+      let lastError = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          if (attempt > 0) {
+            const jitterMs = 300 + Math.random() * 400;
+            await new Promise((r) => setTimeout(r, jitterMs));
+          }
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 8e3);
+          const response = await fetch(this.proxyUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt, systemPrompt }),
+            signal: controller.signal
+          });
+          clearTimeout(timeoutId);
+          if (!response.ok) {
+            throw new Error(`HTTP_${response.status}`);
+          }
+          const data = await response.json();
+          const text = typeof data?.text === "string" ? data.text.trim() : "";
+          if (text) {
+            this.cache.set(cacheKey, text);
+            return text;
+          }
+          throw new Error("EMPTY_RESPONSE");
+        } catch (err) {
+          lastError = err;
+        }
+      }
+      throw lastError || new Error("LLM_REQUEST_FAILED");
+    }
+  };
+
+  // src/core/llm/prompts.ts
+  var SYSTEM_PROMPT = `You are SousArtist, a design coach for beginners. You teach; you never create.
+Rules:
+- Never produce designs, layouts, color palettes, copy, HTML, CSS, or code for the learner's work.
+- Use only the numbers provided in CONTEXT. Do not invent measurements.
+- Follow the requested hint level exactly. At levels 1-2, do not reveal the target value.
+- At most 60 words. Plain, encouraging language. No emoji.
+- If asked to design or fix something for the user, say you coach rather than create, and point to a lesson.
+Output: plain text only (hints) or JSON matching the given schema (diagnosis).`;
+  function getSystemPrompt(expertise = "intermediate") {
+    switch (expertise) {
+      case "beginner":
+        return `You are SousArtist, a dedicated, patient design teacher for beginners.
+Your coaching style: Explain foundational terminology clearly, break down problems into step-by-step guidance, ask gentle Socratic questions to build intuition, and provide extra encouragement.
+Rules:
+- Never produce designs, layouts, palettes, code, HTML, or CSS.
+- Under 65 words. Plain, encouraging language. No emoji.
+- Use only the numbers provided in CONTEXT.`;
+      case "expert":
+        return `You are SousArtist, a peer design systems coworker for senior designers.
+Your coaching style: Be brief and pragmatic. Assume full familiarity with Figma and design fundamentals. Focus on edge cases, tokens, component reusability, and handoff tradeoffs.
+Rules:
+- Never produce designs, layouts, palettes, code, HTML, or CSS.
+- Under 45 words. Sharp, professional, peer-to-peer.
+- Discuss tradeoffs and edge cases. Skip basic definitions.`;
+      case "intermediate":
+      default:
+        return `You are SousArtist, a supportive coach for intermediate designers.
+Your coaching style: Give concise, professional explanations and actionable hints, leaving room for independent problem-solving. Reference design systems and UX standards.
+Rules:
+- Never produce designs, layouts, palettes, code, HTML, or CSS.
+- Under 50 words. Direct and constructive. No emoji.
+- Use only the numbers provided in CONTEXT.`;
+    }
+  }
+  function formatHintPrompt(params) {
+    const expertise = params.expertise || "intermediate";
+    const safeMeasured = {};
+    for (const [k, v] of Object.entries(params.measured || {})) {
+      if (k === "currentName" || k === "name" || k === "text" || k === "nodeName") continue;
+      safeMeasured[k] = v;
+    }
+    const safeExpected = {};
+    for (const [k, v] of Object.entries(params.expected || {})) {
+      if (k === "nodeName" || k === "name" || k === "text") continue;
+      safeExpected[k] = v;
+    }
+    return `Provide a Level ${params.level} coaching hint for the skill "${params.skill}" tailored for a ${expertise} designer.
+CONTEXT NUMBERS:
+- Measured: ${JSON.stringify(safeMeasured)}
+- Target threshold: ${JSON.stringify(safeExpected)}
+- Attempts so far: ${params.attempts}
+- Designer Expertise: ${expertise}
+
+REQUIREMENTS FOR LEVEL ${params.level}:
+${params.level === 1 ? expertise === "beginner" ? "- Ask a patient Socratic question explaining the visual concept. Do NOT reveal target numbers." : expertise === "expert" ? "- Note the measurement anomaly and briefly mention the token/tradeoff. Do NOT reveal solution." : "- Ask a thoughtful Socratic question about the visual rhythm or readability. Do NOT reveal any target numbers." : params.level === 2 ? expertise === "beginner" ? "- Name the design rule and explain why it matters, citing the measured value. Do NOT reveal the solution." : expertise === "expert" ? "- Point directly to the design system rule and tradeoff. Do NOT reveal exact fix values." : "- Name the exact design rule and mention the measured value. Do NOT reveal the final solution value." : "- Guide with specific tool actions (which Figma panel, shortcut, or setting to adjust). State rule thresholds, but NEVER provide an exact hex code or layout coordinates."}
+Remember: Under 60 words. No code blocks. Tone matching ${expertise} level.`;
+  }
+  function formatDiagnosisPrompt(summary) {
+    const anonymizedPayload = {};
+    const skills = ["contrast", "spacing-grid", "layer-naming", "auto-layout"];
+    for (const skill of skills) {
+      const stats = summary.bySkill[skill];
+      const samples = summary.findings.filter((f) => f.skill === skill).slice(0, 3).map((f) => {
+        const safeMeasured = {};
+        for (const [k, v] of Object.entries(f.measured || {})) {
+          if (k === "currentName" || k === "name" || k === "text" || k === "nodeName") continue;
+          safeMeasured[k] = v;
+        }
+        const safeExpected = {};
+        for (const [k, v] of Object.entries(f.expected || {})) {
+          if (k === "nodeName" || k === "name" || k === "text") continue;
+          safeExpected[k] = v;
+        }
+        return { measured: safeMeasured, expected: safeExpected };
+      });
+      anonymizedPayload[skill] = {
+        counts: stats,
+        examples: samples
+      };
+    }
+    return `Given this audit of design gaps, prioritize which skill the beginner should learn first.
+CONTEXT:
+${JSON.stringify(anonymizedPayload, null, 2)}
+
+OUTPUT FORMAT: Return strictly a valid JSON object matching:
+{
+  "order": ["contrast", "spacing-grid", "layer-naming", "auto-layout"],
+  "reason": "Short explanation under 200 characters explaining why this skill was picked first."
+}`;
+  }
+
+  // src/core/llm/guard.ts
+  var FORBIDDEN_GENERATIVE_PATTERNS = [
+    /here is (a|the|your) (layout|design|palette|mockup|code|css|html|solution)/i,
+    /i have (designed|created|built|drawn|generated|fixed)/i,
+    /i designed/i,
+    /i created/i,
+    /copy and paste this (code|css|style|hex)/i,
+    /use this exact (code|hex|layout|color):/i
+  ];
+  var CODE_OR_HTML_REGEX = /(```|<\/?[a-z][\s\S]*>)/i;
+  var HEX_COLOR_REGEX = /#[0-9a-fA-F]{3,8}\b/;
+  function countWords(text) {
+    return text.trim().split(/\s+/).filter(Boolean).length;
+  }
+  function escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+  function guardHint(text, level, expected) {
+    if (!text || text.trim().length === 0) {
+      return { ok: false, reason: "Empty output" };
+    }
+    if (CODE_OR_HTML_REGEX.test(text)) {
+      return { ok: false, reason: "Contains code fence or HTML tag" };
+    }
+    const words = countWords(text);
+    if (words > 70) {
+      return { ok: false, reason: `Word count exceeds 70 words (${words} words)` };
+    }
+    for (const pattern of FORBIDDEN_GENERATIVE_PATTERNS) {
+      if (pattern.test(text)) {
+        return { ok: false, reason: `Matches generative design pattern: ${pattern}` };
+      }
+    }
+    if (level <= 3 && HEX_COLOR_REGEX.test(text)) {
+      return { ok: false, reason: "Reveals hex color at hint level <= 3" };
+    }
+    if (level <= 2 && expected) {
+      for (const key of Object.keys(expected)) {
+        const val = expected[key];
+        if (typeof val === "number" || typeof val === "string") {
+          const strVal = String(val).trim();
+          let targetRegex;
+          if (strVal === "4.5" || strVal === "4.5:1" || strVal === "4.5 : 1") {
+            targetRegex = /\b4\.5(\s*:\s*1)?\b/i;
+          } else {
+            const escaped = escapeRegex(strVal);
+            const startBound = /^\w/.test(strVal) ? "\\b" : "";
+            const endBound = /\w$/.test(strVal) ? "\\b" : "";
+            targetRegex = new RegExp(`${startBound}${escaped}${endBound}`, "i");
+          }
+          if (targetRegex.test(text)) {
+            return { ok: false, reason: `Reveals expected target value "${strVal}" at hint level <= 2` };
+          }
+        }
+      }
+    }
+    return { ok: true };
+  }
+
+  // src/core/lessons/lessons.ts
+  var LESSONS = {
+    "contrast": {
+      id: "lesson-contrast",
+      skill: "contrast",
+      title: "Color Contrast & Readability",
+      goal: "Change the light gray text color on this white card until contrast ratio reaches at least 4.5:1 (WCAG AA).",
+      shortcutTip: 'Press "I" to open the Eyedropper and sample darker tones.',
+      staticHints: [
+        "Is the text easily readable against the white background, or does it blend into the card?",
+        "WCAG AA requires a 4.5:1 ratio for normal text. Currently this gray is about 2.1:1.",
+        "Select the text layer, open the Fill section in the right sidebar, and choose a darker tone like #4B5563 or darker."
+      ],
+      workedExample: "On pure white (#FFFFFF), #767676 reaches exactly 4.54:1 (AA minimum), while #1F2937 delivers a crisp 13.5:1 ratio."
+    },
+    "spacing-grid": {
+      id: "lesson-spacing-grid",
+      skill: "spacing-grid",
+      title: "8-Point Spacing Grid",
+      goal: "Adjust the container item spacing and padding to multiples of 4 (preferably 8) so the card aligns with the grid.",
+      shortcutTip: "Hold Shift + Arrow keys to nudge values in 8px increments.",
+      staticHints: [
+        "Do the gaps and margins feel consistent, or do the odd numbers break the visual rhythm?",
+        "The itemSpacing is currently 13px and padding is 7px and 19px. In an 8-point system, spacing values should be multiples of 4 or 8.",
+        "Select the container frame. In the Auto layout panel, change the gap to 16px and horizontal/vertical padding to 16px or 24px."
+      ],
+      workedExample: "Standard 8pt scale uses 8px (small), 16px (medium), 24px (large), and 32px (xlarge). 4px is reserved for tight micro-elements."
+    },
+    "layer-naming": {
+      id: "lesson-layer-naming",
+      skill: "layer-naming",
+      title: "Semantic Layer Naming",
+      goal: "Rename the default Figma names (Frame 12, Rectangle 4, Group 3) to descriptive names indicating their purpose.",
+      shortcutTip: "Press Cmd/Ctrl + R to quickly batch-rename selected layers.",
+      staticHints: [
+        "If a teammate inspected this file, would the layer names clearly explain what each element represents?",
+        'Default names like "Frame 12" and "Rectangle 4" create clutter and slow down developer handoff.',
+        'Double-click each layer in the left sidebar (or press Cmd/Ctrl+R) and rename them meaningfully, such as "CardContainer", "MediaThumbnail", or "HeaderGroup".'
+      ],
+      workedExample: 'Use component-oriented naming: "UserProfileCard" for the parent frame, "AvatarImage" for the media shape, and "CardHeader" for the text group.'
+    },
+    "auto-layout": {
+      id: "lesson-auto-layout",
+      skill: "auto-layout",
+      title: "Responsive Auto Layout",
+      goal: "Convert this frame with manually positioned elements into an Auto Layout frame so it adapts responsively.",
+      shortcutTip: "Press Shift + A to instantly turn any selection or frame into Auto Layout.",
+      staticHints: [
+        "What happens if the text expands or elements resize? Do they adapt or overlap?",
+        "The container has 3 child elements using absolute manual coordinates instead of an active layout flow.",
+        'Select the outer frame and press Shift+A, or click "+" next to Auto layout in the right sidebar. Choose Vertical direction.'
+      ],
+      workedExample: "Auto layout with Vertical direction and 12px gap ensures items stack cleanly and reflow when content changes."
+    }
+  };
+
+  // src/core/llm/fallback.ts
+  function rankSkills(summary) {
+    const allSkills = ["contrast", "spacing-grid", "layer-naming", "auto-layout"];
+    const scored = allSkills.map((skill) => {
+      const stats = summary.bySkill[skill] || { count: 0, high: 0, medium: 0, low: 0 };
+      const score = stats.high * 3 + stats.medium * 2 + stats.low;
+      return { skill, score, count: stats.count };
+    });
+    scored.sort((a, b) => b.score - a.score);
+    const order = scored.map((s) => s.skill);
+    const topSkill = scored[0];
+    let reason = "Prioritized based on highest severity gaps found in your audit.";
+    if (topSkill.count === 0) {
+      reason = "No active violations found. Starting with foundational contrast principles.";
+    } else if (topSkill.skill === "contrast") {
+      reason = "Contrast gaps impact readability and accessibility directly. Fix these first.";
+    } else if (topSkill.skill === "spacing-grid") {
+      reason = "Inconsistent spacing disrupts visual hierarchy and alignment across your card layout.";
+    } else if (topSkill.skill === "layer-naming") {
+      reason = "Default layer names slow down developer handoff and component maintenance.";
+    } else if (topSkill.skill === "auto-layout") {
+      reason = "Converting manual frames to Auto Layout establishes responsive behavior early.";
+    }
+    return {
+      order,
+      reason
+    };
+  }
+  function getCannedRedirect(closestSkill = "contrast") {
+    const titles = {
+      "contrast": "contrast",
+      "spacing-grid": "the 8pt spacing grid",
+      "layer-naming": "semantic layer naming",
+      "auto-layout": "auto layout"
+    };
+    return `I coach, I don't create. The design stays yours. Want a 2-minute lesson on ${titles[closestSkill]} so you can do this faster yourself?`;
+  }
+  function getStaticHint(skill, level) {
+    const lesson = LESSONS[skill];
+    if (!lesson) {
+      return "Review the core rule in the design guidelines.";
+    }
+    if (level <= 1) return lesson.staticHints[0];
+    if (level === 2) return lesson.staticHints[1];
+    if (level === 3) return lesson.staticHints[2];
+    return lesson.workedExample;
+  }
+
+  // src/core/llm/coach.ts
+  var SousArtistCoach = class {
+    constructor(client) {
+      this.client = client || new ResilientLlmClient();
+    }
+    async diagnoseGaps(summary) {
+      try {
+        const prompt = formatDiagnosisPrompt(summary);
+        const rawText = await this.client.generateText(prompt, SYSTEM_PROMPT);
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("NO_JSON_IN_RESPONSE");
+        const parsed = JSON.parse(jsonMatch[0]);
+        const validSkills = ["contrast", "spacing-grid", "layer-naming", "auto-layout"];
+        if (Array.isArray(parsed.order) && parsed.order.length > 0 && parsed.order.every((s) => validSkills.includes(s)) && new Set(parsed.order).size === parsed.order.length && typeof parsed.reason === "string" && parsed.reason.length <= 200) {
+          return {
+            order: parsed.order,
+            reason: parsed.reason,
+            offline: false
+          };
+        }
+        throw new Error("INVALID_DIAGNOSIS_SCHEMA");
+      } catch (err) {
+        const fallback = rankSkills(summary);
+        return {
+          ...fallback,
+          offline: true
+        };
+      }
+    }
+    async getGradedHint(params) {
+      if (params.level >= 4) {
+        return {
+          hint: getStaticHint(params.skill, 4),
+          level: 4,
+          guarded: true,
+          offline: true
+        };
+      }
+      const systemPrompt = getSystemPrompt(params.expertise || "intermediate");
+      try {
+        const prompt = formatHintPrompt(params);
+        let text = await this.client.generateText(prompt, systemPrompt);
+        let guardRes = guardHint(text, params.level, params.expected);
+        if (!guardRes.ok) {
+          const retryPrompt = `${prompt}
+STRICT WARNING: Your previous output was rejected (${guardRes.reason}). Under 60 words, NO code blocks, NO hex codes, NO target numbers.`;
+          text = await this.client.generateText(retryPrompt, systemPrompt);
+          guardRes = guardHint(text, params.level, params.expected);
+        }
+        if (guardRes.ok) {
+          return {
+            hint: text,
+            level: params.level,
+            guarded: true,
+            offline: false
+          };
+        }
+        return {
+          hint: getStaticHint(params.skill, params.level),
+          level: params.level,
+          guarded: true,
+          offline: true
+        };
+      } catch (err) {
+        return {
+          hint: getStaticHint(params.skill, params.level),
+          level: params.level,
+          guarded: true,
+          offline: true
+        };
+      }
+    }
+    classifyIntent(query) {
+      const q = query.toLowerCase().trim();
+      const generativeRegex = /\b(design (me|a|an|the)|create (a|an|me|the)|make (a|an|me|the|this)|generate (a|an|me|the)|build (a|an|me|the)|help me build|draw (a|an|me|the)|produce (a|an|me|the)|write\s+\S*\s*(css|html|code|copy)|give me (the|a)?\s*(html|css|code|layout)|rewrite (my|the)?\s*(text|copy)|replace my|fix it for me|do it for me|palette|color scheme|colour scheme|exact hex|mockup|wireframe|hero section|dashboard|login form|login page|checkout|button with|show me what (it|the|your|my)|what (it|the corrected|the fixed) (looks?|would look)|sketch a|put together a (color|colour|layout|palette)|suggest a layout|copy for a|write component|build a \w+ page)\b/i;
+      if (generativeRegex.test(q)) {
+        return "generate_design";
+      }
+      return "explain_concept";
+    }
+    async handleUserQuery(query, closestSkill = "contrast", expertise = "intermediate") {
+      const intent = this.classifyIntent(query);
+      if (intent === "generate_design") {
+        return {
+          response: getCannedRedirect(closestSkill),
+          intent: "generate_design",
+          offline: true
+        };
+      }
+      try {
+        const systemPrompt = getSystemPrompt(expertise);
+        const prompt = `The ${expertise} designer asks this conceptual question about UI design: "${query}".
+Answer in at most 50 words explaining the principle, rule, or architectural tradeoff. Do NOT produce designs, CSS, or color palettes.`;
+        const text = await this.client.generateText(prompt, systemPrompt);
+        const guard = guardHint(text, 2);
+        if (guard.ok) {
+          return { response: text, intent: "explain_concept", offline: false };
+        }
+      } catch (e) {
+      }
+      return {
+        response: `Good design relies on clear hierarchy and standard rules: WCAG contrast (4.5:1), consistent 8pt spacing, and semantic layer structure. Try one of our 2-minute lessons to practice.`,
+        intent: "explain_concept",
+        offline: true
+      };
+    }
+    /**
+     * Analyse an audit summary and produce 2-3 structured Workflow Relay notes for the next designer.
+     * Output schema: { notes: Array<{ topic, title, guideline, tradeoffReason, targetScope }> }
+     * Falls back to deterministic notes based on top findings if the LLM is unavailable.
+     */
+    async generateRelayNotes(audit, pageName) {
+      const counts = Object.entries(audit.bySkill).filter(([, s]) => s.count > 0).map(([k, s]) => `${k}: ${s.high}H/${s.medium}M/${s.low}L`).join(", ");
+      const prompt = `You are SousArtist, a design coach who writes workflow relay notes \u2014 short handoff messages for the next designer.
+
+Page audited: "${pageName}".
+Gap summary (rule: highSeverity H / medium M / low L): ${counts || "none"}.
+Total findings: ${audit.totalCount}.
+
+Write exactly 2-3 relay notes as a JSON array. Each note must cover a DIFFERENT gap category above.
+Schema for each: { "topic": one of [structure|naming|spacing|overrides|autolayout], "title": string \u226410 words, "guideline": string \u226430 words describing the recurring pattern to watch for, "tradeoffReason": string \u226420 words on why it matters, "targetScope": string \u22646 words }.
+
+STRICT RULES:
+- No hex codes, no CSS, no code blocks.
+- Only mention structural observations from the audit counts above.
+- Return ONLY valid JSON: { "notes": [...] }`;
+      try {
+        const rawText = await this.client.generateText(prompt, SYSTEM_PROMPT);
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("NO_JSON");
+        const parsed = JSON.parse(jsonMatch[0]);
+        const validTopics = ["structure", "naming", "spacing", "overrides", "autolayout"];
+        if (Array.isArray(parsed.notes) && parsed.notes.length >= 1 && parsed.notes.every(
+          (n) => validTopics.includes(n.topic) && typeof n.title === "string" && typeof n.guideline === "string"
+        )) {
+          return { notes: parsed.notes.slice(0, 3), offline: false };
+        }
+        throw new Error("INVALID_SCHEMA");
+      } catch (_) {
+        const fallbackNotes = [];
+        const topicMap = {
+          "contrast": "structure",
+          "spacing-grid": "spacing",
+          "layer-naming": "naming",
+          "auto-layout": "autolayout"
+        };
+        const fallbackTitles = {
+          "contrast": "Text contrast falls below WCAG AA",
+          "spacing-grid": "Spacing values break the 8pt grid",
+          "layer-naming": "Layers use default boilerplate names",
+          "auto-layout": "Multi-child frames missing auto layout"
+        };
+        const fallbackGuidelines = {
+          "contrast": "Check every text layer against its background before handoff. Use the contrast checker in the Audit tab.",
+          "spacing-grid": "Keep all padding and gap values as multiples of 8px (or 4px for compact layouts).",
+          "layer-naming": 'Rename frames, groups and shapes to describe their purpose \u2014 avoid "Frame 12" or "Rectangle 4".',
+          "auto-layout": "Wrap any frame with 2+ children in an auto-layout so spacing responds automatically to content changes."
+        };
+        const fallbackTradeoffs = {
+          "contrast": "Accessible contrast avoids legal and usability issues.",
+          "spacing-grid": "Grid alignment prevents pixel-pushing in dev handoff.",
+          "layer-naming": "Semantic names speed up future edits and reviews.",
+          "auto-layout": "Auto layout reduces manual resizing during iterations."
+        };
+        const sorted = Object.entries(audit.bySkill).filter(([, s]) => s.count > 0).sort((a, b) => b[1].high * 3 + b[1].medium * 2 + b[1].low - (a[1].high * 3 + a[1].medium * 2 + a[1].low)).slice(0, 3);
+        for (const [skill] of sorted) {
+          fallbackNotes.push({
+            topic: topicMap[skill] || "structure",
+            title: fallbackTitles[skill] || `Watch out for ${skill} issues`,
+            guideline: fallbackGuidelines[skill] || "Review this category before handoff.",
+            tradeoffReason: fallbackTradeoffs[skill] || "Avoids rework during development.",
+            targetScope: pageName.length > 20 ? "This page" : pageName
+          });
+        }
+        if (fallbackNotes.length === 0) {
+          fallbackNotes.push({
+            topic: "structure",
+            title: "No significant gaps found",
+            guideline: "This page passed the four core rule engines. Keep it up for the next designer.",
+            tradeoffReason: "Consistent quality reduces handoff friction.",
+            targetScope: "General"
+          });
+        }
+        return { notes: fallbackNotes, offline: true };
+      }
+    }
+  };
+
   // src/code.ts
+  var coach = new SousArtistCoach();
   figma.showUI(__html__, { width: 380, height: 640, themeColors: true });
   var currentPracticeFrameId = null;
   var currentPracticeSkill = null;
@@ -1279,6 +1785,18 @@
         }
         break;
       }
+      case "CREATE_STANDARDS_PROFILE": {
+        if (msg.profile && typeof msg.profile === "object") {
+          const state = await loadLearnerState();
+          if (!state.profiles) state.profiles = [];
+          state.profiles.push(msg.profile);
+          state.activeProfileId = msg.profile.id;
+          await saveLearnerState(state);
+          figma.notify(`Standards Profile: "${msg.profile.name}" created and active.`);
+          figma.ui.postMessage({ type: "LEARNER_STATE_LOADED", state });
+        }
+        break;
+      }
       case "ADD_EXEMPTION": {
         if (typeof msg.nodeId === "string") {
           const state = await loadLearnerState();
@@ -1383,6 +1901,42 @@
       case "NOTIFY": {
         if (typeof msg.message === "string") {
           figma.notify(msg.message, { timeout: msg.timeout || 3e3 });
+        }
+        break;
+      }
+      case "GENERATE_AI_RELAY_NOTES": {
+        try {
+          const audit = msg.audit;
+          const pageName = msg.pageName || figma.currentPage.name;
+          const { notes, offline } = await coach.generateRelayNotes(audit, pageName);
+          const state = await loadLearnerState();
+          state.relayNotes = state.relayNotes || [];
+          for (const n of notes) {
+            state.relayNotes.unshift({
+              id: `relay-ai-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              author: offline ? "SousArtist (offline)" : "SousArtist AI",
+              context: "team",
+              topic: n.topic,
+              title: n.title,
+              guideline: n.guideline,
+              tradeoffReason: n.tradeoffReason || "",
+              targetScope: n.targetScope || pageName,
+              createdAt: "Just now"
+            });
+          }
+          await saveLearnerState(state);
+          figma.notify(`\u2728 ${notes.length} AI relay note${notes.length !== 1 ? "s" : ""} added.`);
+          figma.ui.postMessage({
+            type: "AI_RELAY_NOTES_READY",
+            state,
+            offline,
+            count: notes.length
+          });
+        } catch (err) {
+          figma.ui.postMessage({
+            type: "AI_RELAY_NOTES_ERROR",
+            error: err?.message || "Failed to generate relay notes."
+          });
         }
         break;
       }

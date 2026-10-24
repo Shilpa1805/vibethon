@@ -1,7 +1,7 @@
 // SousArtist - UI Controller
 // Move, Measure, Manage - Never Make design for the user
 
-import { AuditSummary, Finding, LearnerState, SkillId, ExceptionReason } from '../core/types';
+import { AuditSummary, Finding, LearnerState, SkillId, ExceptionReason, StandardsProfile, WorkContext } from '../core/types';
 import { LESSONS, LessonDefinition } from '../core/lessons/lessons';
 import { SousArtistCoach } from '../core/llm/coach';
 import { buildStructuralFindingQuery } from '../core/llm/prompts';
@@ -13,6 +13,7 @@ let activeFrameId: string | null = null;
 let currentHintLevel = 0;
 let hintsUsedInSession = 0;
 let pendingPracticeContext: { skill: SkillId; nodeName?: string } | null = null;
+let lastAudit: { audit: any; pageName: string } | null = null; // stored for AI relay analysis
 const coach = new SousArtistCoach();
 
 // Tab Switching
@@ -120,6 +121,99 @@ function renderProfileMenu() {
       closeAllDropdowns();
       parent.postMessage({ pluginMessage: { type: 'SET_ACTIVE_PROFILE', profileId } }, '*');
     });
+  });
+}
+
+// ── New Institution & Constraints Modal Setup ───────────────────────────────
+const btnOpenCreateProfile = document.getElementById('btn-open-create-profile');
+const instModalOverlay = document.getElementById('institution-modal-overlay');
+const btnCloseInstModal = document.getElementById('btn-close-institution-modal');
+const btnCancelInst = document.getElementById('btn-cancel-institution');
+const formCreateInst = document.getElementById('form-create-institution') as HTMLFormElement | null;
+
+if (btnOpenCreateProfile && instModalOverlay) {
+  btnOpenCreateProfile.addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeAllDropdowns();
+    instModalOverlay.style.display = 'flex';
+  });
+}
+
+function closeInstitutionModal() {
+  if (instModalOverlay) instModalOverlay.style.display = 'none';
+  if (formCreateInst) formCreateInst.reset();
+}
+
+if (btnCloseInstModal) btnCloseInstModal.addEventListener('click', closeInstitutionModal);
+if (btnCancelInst) btnCancelInst.addEventListener('click', closeInstitutionModal);
+
+if (formCreateInst) {
+  formCreateInst.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const nameInput = document.getElementById('inst-name') as HTMLInputElement | null;
+    const contextSelect = document.getElementById('inst-context') as HTMLSelectElement | null;
+    const descInput = document.getElementById('inst-desc') as HTMLInputElement | null;
+    const gridSelect = document.getElementById('inst-grid') as HTMLSelectElement | null;
+    const exceptionsInput = document.getElementById('inst-exceptions') as HTMLInputElement | null;
+    const contrastSelect = document.getElementById('inst-contrast') as HTMLSelectElement | null;
+    const namingSelect = document.getElementById('inst-naming') as HTMLSelectElement | null;
+    const autolayoutSelect = document.getElementById('inst-autolayout') as HTMLSelectElement | null;
+
+    const name = nameInput?.value?.trim();
+    if (!name) return;
+
+    const context = (contextSelect?.value || 'team') as WorkContext;
+    const desc = descInput?.value?.trim() || `${name} design system constraints.`;
+    const baseGrid = parseInt(gridSelect?.value || '8', 10) as 4 | 8;
+
+    const rawExceptions = exceptionsInput?.value || '';
+    const allowedExceptions = rawExceptions
+      .split(',')
+      .map((s) => parseInt(s.trim(), 10))
+      .filter((n) => !isNaN(n));
+
+    const standard = (contrastSelect?.value || 'AA') as 'AA' | 'AAA';
+    const minNormalRatio = standard === 'AAA' ? 7.0 : 4.5;
+    const minLargeRatio = standard === 'AAA' ? 4.5 : 3.0;
+
+    const pattern = (namingSelect?.value || 'default-check') as 'default-check' | 'slash-hierarchy' | 'pascal-case';
+    const strictness = (autolayoutSelect?.value || 'containers-only') as 'containers-only' | 'all-multi-child';
+
+    const newProfile: StandardsProfile = {
+      id: `profile-${Date.now()}`,
+      name,
+      context,
+      description: desc,
+      spacing: {
+        baseGrid,
+        allowedExceptions,
+      },
+      naming: {
+        pattern,
+        forbiddenDefaults: true,
+      },
+      contrast: {
+        standard,
+        minNormalRatio,
+        minLargeRatio,
+      },
+      autoLayout: {
+        strictness,
+      },
+      exemptions: [],
+    };
+
+    parent.postMessage({ pluginMessage: { type: 'CREATE_STANDARDS_PROFILE', profile: newProfile } }, '*');
+
+    if (learnerState) {
+      if (!learnerState.profiles) learnerState.profiles = [];
+      learnerState.profiles.push(newProfile);
+      learnerState.activeProfileId = newProfile.id;
+      syncToolbarFromState(learnerState);
+    }
+
+    closeInstitutionModal();
+    showToast(`✓ Standards created for "${escapeHtml(name)}"!`);
   });
 }
 
@@ -1169,6 +1263,32 @@ function clearRelayForm() {
   if (tradeoff) tradeoff.value = '';
 }
 
+// ── AI Analyse Relay Button ──────────────────────────────────────────────────
+const btnAiAnalyseRelay = document.getElementById('btn-ai-analyse-relay') as HTMLButtonElement | null;
+if (btnAiAnalyseRelay) {
+  btnAiAnalyseRelay.addEventListener('click', () => {
+    if (!lastAudit) {
+      showToast('Run an audit first so the AI has something to analyse.');
+      return;
+    }
+    // Show loading banner
+    const aiBanner = document.getElementById('relay-ai-banner');
+    const aiStatus = document.getElementById('relay-ai-status');
+    if (aiBanner) aiBanner.style.display = 'flex';
+    if (aiStatus) aiStatus.textContent = 'Analysing page for relay notes…';
+    btnAiAnalyseRelay.disabled = true;
+    btnAiAnalyseRelay.innerHTML = '<span>⏳</span><span>Analysing…</span>';
+
+    parent.postMessage({
+      pluginMessage: {
+        type: 'GENERATE_AI_RELAY_NOTES',
+        audit: lastAudit.audit,
+        pageName: lastAudit.pageName,
+      },
+    }, '*');
+  });
+}
+
 // ── Unsupported Items Notice ─────────────────────────────────────────────────
 function renderUnsupportedNotice(audit: AuditSummary) {
   const container = document.getElementById('unsupported-container');
@@ -1219,6 +1339,8 @@ window.onmessage = (event) => {
     }
 
     case 'AUDIT_RESULTS': {
+      // Store audit for AI Relay analysis
+      lastAudit = { audit: msg.audit, pageName: msg.pageName };
       renderAuditResults(msg.audit, msg.pageName);
       renderUnsupportedNotice(msg.audit);
       break;
@@ -1292,6 +1414,12 @@ window.onmessage = (event) => {
             learnerState = msg.result.state;
             const xpEl = document.getElementById('stat-xp');
             if (xpEl && learnerState) xpEl.textContent = `${learnerState.xp} XP`;
+            // Clear practice context and advance to next skill
+            pendingPracticeContext = null;
+            // Refresh Path tab to show next exercise
+            renderPathTab();
+            // Optionally switch back to Path tab for user
+            switchTab('path');
           }
         } else {
           resBox.innerHTML = `
@@ -1311,6 +1439,31 @@ window.onmessage = (event) => {
       learnerState = msg.state;
       showToast(`Transfer check: Gaps found on real page. Dropped ${msg.droppedSkills.join(', ')} to Box 0.`);
       renderPathTab();
+      break;
+    }
+
+    case 'AI_RELAY_NOTES_READY': {
+      // AI analysis complete — refresh relay tab and hide banner
+      const aiBanner = document.getElementById('relay-ai-banner');
+      const aiBtn = document.getElementById('btn-ai-analyse-relay') as HTMLButtonElement | null;
+      if (aiBanner) aiBanner.style.display = 'none';
+      if (aiBtn) { aiBtn.disabled = false; aiBtn.innerHTML = '<span>✨</span><span>AI Analyse</span>'; }
+      if (msg.state) {
+        learnerState = msg.state;
+        renderRelayTab(msg.state);
+        switchTab('relay');
+      }
+      const offlineLabel = msg.offline ? ' (offline fallback)' : '';
+      showToast(`✨ ${msg.count} AI relay note${msg.count !== 1 ? 's' : ''} added${offlineLabel}.`);
+      break;
+    }
+
+    case 'AI_RELAY_NOTES_ERROR': {
+      const aiBanner = document.getElementById('relay-ai-banner');
+      const aiBtn = document.getElementById('btn-ai-analyse-relay') as HTMLButtonElement | null;
+      if (aiBanner) aiBanner.style.display = 'none';
+      if (aiBtn) { aiBtn.disabled = false; aiBtn.innerHTML = '<span>✨</span><span>AI Analyse</span>'; }
+      showToast(msg.error || 'Could not generate relay notes.');
       break;
     }
 

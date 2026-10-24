@@ -450,6 +450,12 @@ button:focus-visible {
           <div id="profile-menu-items">
             <!-- Dynamic profiles rendered by ui.ts -->
           </div>
+          <div style="border-top:1px solid var(--border-color); padding:6px 8px; margin-top:4px;">
+            <button class="btn-secondary" id="btn-open-create-profile" type="button" style="width:100%; font-size:11px; padding:6px 8px; display:flex; align-items:center; justify-content:center; gap:6px; cursor:pointer;">
+              <span>➕</span>
+              <span><strong>New Institution / Profile</strong></span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -537,9 +543,17 @@ button:focus-visible {
         Contextual working patterns communicated in the moment they are relevant, rather than handed off in a static document.
       </div>
 
-      <div style="display:flex; justify-content:space-between; align-items:center;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap;">
         <span style="font-size:12px; font-weight:700;">Handoff Patterns (<span id="relay-count">0</span>)</span>
-        <button class="btn-secondary" id="btn-add-relay-pattern" style="padding:4px 8px; font-size:11px;">+ Leave Note</button>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <button class="btn-secondary" id="btn-ai-analyse-relay" style="padding:4px 8px; font-size:11px; display:flex; align-items:center; gap:4px;" title="Let AI read the last audit and write relay notes automatically">
+            <span>✨</span><span>AI Analyse</span>
+          </button>
+          <button class="btn-secondary" id="btn-add-relay-pattern" style="padding:4px 8px; font-size:11px;">+ Leave Note</button>
+        </div>
+      </div>
+      <div id="relay-ai-banner" style="display:none; font-size:11px; color:var(--accent-color); background:rgba(99,102,241,0.08); border:1px solid rgba(99,102,241,0.3); border-radius:6px; padding:8px 10px; display:flex; align-items:center; gap:6px;">
+        <span>✨</span><span id="relay-ai-status">Analysing page for relay notes…</span>
       </div>
 
       <!-- Add Relay Form (Hidden by default) -->
@@ -598,6 +612,119 @@ button:focus-visible {
           <span style="font-size:11px; color:var(--text-secondary);">I want fast audits, edge cases, and workflow feedback.</span>
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- New Institution & Constraints Modal -->
+  <div id="institution-modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:10000; align-items:center; justify-content:center; padding:16px;">
+    <div style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:12px; padding:20px; max-width:340px; width:100%; box-shadow:0 16px 48px rgba(0,0,0,0.5); max-height:92vh; overflow-y:auto; box-sizing:border-box;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
+        <div>
+          <div style="font-weight:700; font-size:14px; color:var(--text-primary); display:flex; align-items:center; gap:6px;">
+            <span>🏛️</span>
+            <span>New Institution / System</span>
+          </div>
+          <div style="font-size:11px; color:var(--text-secondary); margin-top:2px; line-height:1.4;">
+            Define specific constraints for your enterprise, university, or client design system.
+          </div>
+        </div>
+        <button id="btn-close-institution-modal" type="button" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:16px; padding:2px; line-height:1;" title="Close">✕</button>
+      </div>
+
+      <form id="form-create-institution" style="display:flex; flex-direction:column; gap:10px;">
+        <!-- Institution Name -->
+        <div>
+          <label style="display:block; font-size:11px; font-weight:700; color:var(--text-secondary); margin-bottom:3px;" for="inst-name">
+            Institution Name *
+          </label>
+          <input id="inst-name" type="text" placeholder="e.g. Stanford Health, Stripe Brand" required style="width:100%; box-sizing:border-box; background:var(--bg-primary); border:1px solid var(--border-color); color:var(--text-primary); padding:6px 8px; border-radius:5px; font-size:11px;" />
+        </div>
+
+        <!-- Context -->
+        <div>
+          <label style="display:block; font-size:11px; font-weight:700; color:var(--text-secondary); margin-bottom:3px;" for="inst-context">
+            Work Context
+          </label>
+          <select id="inst-context" style="width:100%; box-sizing:border-box; background:var(--bg-primary); border:1px solid var(--border-color); color:var(--text-primary); padding:6px 8px; border-radius:5px; font-size:11px;">
+            <option value="team">🏢 In-House Team / Enterprise</option>
+            <option value="freelance">💼 Client / Agency Project</option>
+            <option value="personal">🎓 Academic / University / Personal</option>
+          </select>
+        </div>
+
+        <!-- Description -->
+        <div>
+          <label style="display:block; font-size:11px; font-weight:700; color:var(--text-secondary); margin-bottom:3px;" for="inst-desc">
+            Description / Scope
+          </label>
+          <input id="inst-desc" type="text" placeholder="e.g. Strict AAA healthcare contrast & 8pt grid" style="width:100%; box-sizing:border-box; background:var(--bg-primary); border:1px solid var(--border-color); color:var(--text-primary); padding:6px 8px; border-radius:5px; font-size:11px;" />
+        </div>
+
+        <!-- Constraints Group -->
+        <div style="border-top:1px solid var(--border-color); padding-top:8px; display:flex; flex-direction:column; gap:8px;">
+          <div style="font-size:11px; font-weight:700; color:var(--accent-color); text-transform:uppercase; letter-spacing:0.5px;">
+            Institutional Constraints
+          </div>
+
+          <!-- Spacing Grid Base -->
+          <div>
+            <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:2px;" for="inst-grid">
+              📐 Spacing Grid Base
+            </label>
+            <select id="inst-grid" style="width:100%; box-sizing:border-box; background:var(--bg-primary); border:1px solid var(--border-color); color:var(--text-primary); padding:5px 8px; border-radius:5px; font-size:11px;">
+              <option value="8">8pt Grid (Standard system spacing)</option>
+              <option value="4">4pt Grid (Dense / compact interface)</option>
+            </select>
+          </div>
+
+          <!-- Spacing Exceptions -->
+          <div>
+            <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:2px;" for="inst-exceptions">
+              Allowed Spacing Exceptions (px)
+            </label>
+            <input id="inst-exceptions" type="text" placeholder="e.g. 4, 12 (optional comma-separated)" style="width:100%; box-sizing:border-box; background:var(--bg-primary); border:1px solid var(--border-color); color:var(--text-primary); padding:5px 8px; border-radius:5px; font-size:11px;" />
+          </div>
+
+          <!-- Contrast Standard -->
+          <div>
+            <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:2px;" for="inst-contrast">
+              🌓 Color Contrast Constraint
+            </label>
+            <select id="inst-contrast" style="width:100%; box-sizing:border-box; background:var(--bg-primary); border:1px solid var(--border-color); color:var(--text-primary); padding:5px 8px; border-radius:5px; font-size:11px;">
+              <option value="AA">WCAG AA — 4.5:1 normal / 3.0:1 large (Standard)</option>
+              <option value="AAA">WCAG AAA — 7.0:1 normal / 4.5:1 large (High Rigor)</option>
+            </select>
+          </div>
+
+          <!-- Naming Convention -->
+          <div>
+            <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:2px;" for="inst-naming">
+              🏷️ Layer Naming Policy
+            </label>
+            <select id="inst-naming" style="width:100%; box-sizing:border-box; background:var(--bg-primary); border:1px solid var(--border-color); color:var(--text-primary); padding:5px 8px; border-radius:5px; font-size:11px;">
+              <option value="default-check">Clean / Semantic (No Frame 12, Rectangle 4)</option>
+              <option value="slash-hierarchy">Slash Hierarchy (e.g. Component/Variant/State)</option>
+              <option value="pascal-case">PascalCase (e.g. PrimaryButton, HeroCard)</option>
+            </select>
+          </div>
+
+          <!-- Auto Layout Strictness -->
+          <div>
+            <label style="display:block; font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:2px;" for="inst-autolayout">
+              📦 Auto Layout Policy
+            </label>
+            <select id="inst-autolayout" style="width:100%; box-sizing:border-box; background:var(--bg-primary); border:1px solid var(--border-color); color:var(--text-primary); padding:5px 8px; border-radius:5px; font-size:11px;">
+              <option value="containers-only">Component Containers (Standard)</option>
+              <option value="all-multi-child">All Multi-Child Frames (Strict)</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px; padding-top:8px; border-top:1px solid var(--border-color);">
+          <button type="button" id="btn-cancel-institution" class="btn-secondary" style="padding:6px 12px; font-size:11px;">Cancel</button>
+          <button type="submit" class="btn-primary" style="padding:6px 14px; font-size:11px; font-weight:700;">Save & Activate</button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -667,7 +794,9 @@ button:focus-visible {
       this.cache = /* @__PURE__ */ new Map();
       this.proxyUrl = options?.proxyUrl ?? (true ? "" : "");
     }
-    // Simple string hash for payload caching
+    // djb2 32-bit string hash for payload cache deduplication.
+    // This is NOT a cryptographic hash — it prevents duplicate LLM calls for identical
+    // prompt+system pairs within a single plugin session, not across restarts.
     hashPayload(payload) {
       const str = `${payload.systemPrompt || ""}::${payload.prompt}`;
       let hash = 0;
@@ -1008,7 +1137,7 @@ STRICT WARNING: Your previous output was rejected (${guardRes.reason}). Under 60
     }
     classifyIntent(query) {
       const q = query.toLowerCase().trim();
-      const generativeRegex = /\b(design (me|a|an|the)|create (a|an|me|the)|make (a|an|me|the|this)|generate (a|an|me|the)|build (a|an|me|the)|draw (a|an|me|the)|produce (a|an|me|the)|write (the|a|my)?\s*(css|html|code|copy)|give me (the|a)?\s*(html|css|code|layout)|rewrite (my|the)?\s*(text|copy)|replace my|fix it for me|do it for me|palette|exact hex|mockup|hero section|dashboard|login form|login page|checkout|button with)\b/i;
+      const generativeRegex = /\b(design (me|a|an|the)|create (a|an|me|the)|make (a|an|me|the|this)|generate (a|an|me|the)|build (a|an|me|the)|help me build|draw (a|an|me|the)|produce (a|an|me|the)|write\s+\S*\s*(css|html|code|copy)|give me (the|a)?\s*(html|css|code|layout)|rewrite (my|the)?\s*(text|copy)|replace my|fix it for me|do it for me|palette|color scheme|colour scheme|exact hex|mockup|wireframe|hero section|dashboard|login form|login page|checkout|button with|show me what (it|the|your|my)|what (it|the corrected|the fixed) (looks?|would look)|sketch a|put together a (color|colour|layout|palette)|suggest a layout|copy for a|write component|build a \w+ page)\b/i;
       if (generativeRegex.test(q)) {
         return "generate_design";
       }
@@ -1040,6 +1169,86 @@ Answer in at most 50 words explaining the principle, rule, or architectural trad
         offline: true
       };
     }
+    /**
+     * Analyse an audit summary and produce 2-3 structured Workflow Relay notes for the next designer.
+     * Output schema: { notes: Array<{ topic, title, guideline, tradeoffReason, targetScope }> }
+     * Falls back to deterministic notes based on top findings if the LLM is unavailable.
+     */
+    async generateRelayNotes(audit, pageName) {
+      const counts = Object.entries(audit.bySkill).filter(([, s]) => s.count > 0).map(([k, s]) => `${k}: ${s.high}H/${s.medium}M/${s.low}L`).join(", ");
+      const prompt = `You are SousArtist, a design coach who writes workflow relay notes \u2014 short handoff messages for the next designer.
+
+Page audited: "${pageName}".
+Gap summary (rule: highSeverity H / medium M / low L): ${counts || "none"}.
+Total findings: ${audit.totalCount}.
+
+Write exactly 2-3 relay notes as a JSON array. Each note must cover a DIFFERENT gap category above.
+Schema for each: { "topic": one of [structure|naming|spacing|overrides|autolayout], "title": string \u226410 words, "guideline": string \u226430 words describing the recurring pattern to watch for, "tradeoffReason": string \u226420 words on why it matters, "targetScope": string \u22646 words }.
+
+STRICT RULES:
+- No hex codes, no CSS, no code blocks.
+- Only mention structural observations from the audit counts above.
+- Return ONLY valid JSON: { "notes": [...] }`;
+      try {
+        const rawText = await this.client.generateText(prompt, SYSTEM_PROMPT);
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("NO_JSON");
+        const parsed = JSON.parse(jsonMatch[0]);
+        const validTopics = ["structure", "naming", "spacing", "overrides", "autolayout"];
+        if (Array.isArray(parsed.notes) && parsed.notes.length >= 1 && parsed.notes.every(
+          (n) => validTopics.includes(n.topic) && typeof n.title === "string" && typeof n.guideline === "string"
+        )) {
+          return { notes: parsed.notes.slice(0, 3), offline: false };
+        }
+        throw new Error("INVALID_SCHEMA");
+      } catch (_) {
+        const fallbackNotes = [];
+        const topicMap = {
+          "contrast": "structure",
+          "spacing-grid": "spacing",
+          "layer-naming": "naming",
+          "auto-layout": "autolayout"
+        };
+        const fallbackTitles = {
+          "contrast": "Text contrast falls below WCAG AA",
+          "spacing-grid": "Spacing values break the 8pt grid",
+          "layer-naming": "Layers use default boilerplate names",
+          "auto-layout": "Multi-child frames missing auto layout"
+        };
+        const fallbackGuidelines = {
+          "contrast": "Check every text layer against its background before handoff. Use the contrast checker in the Audit tab.",
+          "spacing-grid": "Keep all padding and gap values as multiples of 8px (or 4px for compact layouts).",
+          "layer-naming": 'Rename frames, groups and shapes to describe their purpose \u2014 avoid "Frame 12" or "Rectangle 4".',
+          "auto-layout": "Wrap any frame with 2+ children in an auto-layout so spacing responds automatically to content changes."
+        };
+        const fallbackTradeoffs = {
+          "contrast": "Accessible contrast avoids legal and usability issues.",
+          "spacing-grid": "Grid alignment prevents pixel-pushing in dev handoff.",
+          "layer-naming": "Semantic names speed up future edits and reviews.",
+          "auto-layout": "Auto layout reduces manual resizing during iterations."
+        };
+        const sorted = Object.entries(audit.bySkill).filter(([, s]) => s.count > 0).sort((a, b) => b[1].high * 3 + b[1].medium * 2 + b[1].low - (a[1].high * 3 + a[1].medium * 2 + a[1].low)).slice(0, 3);
+        for (const [skill] of sorted) {
+          fallbackNotes.push({
+            topic: topicMap[skill] || "structure",
+            title: fallbackTitles[skill] || `Watch out for ${skill} issues`,
+            guideline: fallbackGuidelines[skill] || "Review this category before handoff.",
+            tradeoffReason: fallbackTradeoffs[skill] || "Avoids rework during development.",
+            targetScope: pageName.length > 20 ? "This page" : pageName
+          });
+        }
+        if (fallbackNotes.length === 0) {
+          fallbackNotes.push({
+            topic: "structure",
+            title: "No significant gaps found",
+            guideline: "This page passed the four core rule engines. Keep it up for the next designer.",
+            tradeoffReason: "Consistent quality reduces handoff friction.",
+            targetScope: "General"
+          });
+        }
+        return { notes: fallbackNotes, offline: true };
+      }
+    }
   };
 
   // src/ui/escape.ts
@@ -1055,6 +1264,7 @@ Answer in at most 50 words explaining the principle, rule, or architectural trad
   var currentHintLevel = 0;
   var hintsUsedInSession = 0;
   var pendingPracticeContext = null;
+  var lastAudit = null;
   var coach = new SousArtistCoach();
   var tabButtons = document.querySelectorAll(".tab-btn");
   var tabContents = document.querySelectorAll(".tab-content");
@@ -1144,6 +1354,81 @@ Answer in at most 50 words explaining the principle, rule, or architectural trad
         closeAllDropdowns();
         parent.postMessage({ pluginMessage: { type: "SET_ACTIVE_PROFILE", profileId } }, "*");
       });
+    });
+  }
+  var btnOpenCreateProfile = document.getElementById("btn-open-create-profile");
+  var instModalOverlay = document.getElementById("institution-modal-overlay");
+  var btnCloseInstModal = document.getElementById("btn-close-institution-modal");
+  var btnCancelInst = document.getElementById("btn-cancel-institution");
+  var formCreateInst = document.getElementById("form-create-institution");
+  if (btnOpenCreateProfile && instModalOverlay) {
+    btnOpenCreateProfile.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeAllDropdowns();
+      instModalOverlay.style.display = "flex";
+    });
+  }
+  function closeInstitutionModal() {
+    if (instModalOverlay) instModalOverlay.style.display = "none";
+    if (formCreateInst) formCreateInst.reset();
+  }
+  if (btnCloseInstModal) btnCloseInstModal.addEventListener("click", closeInstitutionModal);
+  if (btnCancelInst) btnCancelInst.addEventListener("click", closeInstitutionModal);
+  if (formCreateInst) {
+    formCreateInst.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const nameInput = document.getElementById("inst-name");
+      const contextSelect = document.getElementById("inst-context");
+      const descInput = document.getElementById("inst-desc");
+      const gridSelect = document.getElementById("inst-grid");
+      const exceptionsInput = document.getElementById("inst-exceptions");
+      const contrastSelect = document.getElementById("inst-contrast");
+      const namingSelect = document.getElementById("inst-naming");
+      const autolayoutSelect = document.getElementById("inst-autolayout");
+      const name = nameInput?.value?.trim();
+      if (!name) return;
+      const context = contextSelect?.value || "team";
+      const desc = descInput?.value?.trim() || `${name} design system constraints.`;
+      const baseGrid = parseInt(gridSelect?.value || "8", 10);
+      const rawExceptions = exceptionsInput?.value || "";
+      const allowedExceptions = rawExceptions.split(",").map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n));
+      const standard = contrastSelect?.value || "AA";
+      const minNormalRatio = standard === "AAA" ? 7 : 4.5;
+      const minLargeRatio = standard === "AAA" ? 4.5 : 3;
+      const pattern = namingSelect?.value || "default-check";
+      const strictness = autolayoutSelect?.value || "containers-only";
+      const newProfile = {
+        id: `profile-${Date.now()}`,
+        name,
+        context,
+        description: desc,
+        spacing: {
+          baseGrid,
+          allowedExceptions
+        },
+        naming: {
+          pattern,
+          forbiddenDefaults: true
+        },
+        contrast: {
+          standard,
+          minNormalRatio,
+          minLargeRatio
+        },
+        autoLayout: {
+          strictness
+        },
+        exemptions: []
+      };
+      parent.postMessage({ pluginMessage: { type: "CREATE_STANDARDS_PROFILE", profile: newProfile } }, "*");
+      if (learnerState) {
+        if (!learnerState.profiles) learnerState.profiles = [];
+        learnerState.profiles.push(newProfile);
+        learnerState.activeProfileId = newProfile.id;
+        syncToolbarFromState(learnerState);
+      }
+      closeInstitutionModal();
+      showToast(`\u2713 Standards created for "${escapeHtml(name)}"!`);
     });
   }
   function closeAllDropdowns() {
@@ -2056,6 +2341,28 @@ Answer in at most 50 words explaining the principle, rule, or architectural trad
     if (guideline) guideline.value = "";
     if (tradeoff) tradeoff.value = "";
   }
+  var btnAiAnalyseRelay = document.getElementById("btn-ai-analyse-relay");
+  if (btnAiAnalyseRelay) {
+    btnAiAnalyseRelay.addEventListener("click", () => {
+      if (!lastAudit) {
+        showToast("Run an audit first so the AI has something to analyse.");
+        return;
+      }
+      const aiBanner = document.getElementById("relay-ai-banner");
+      const aiStatus = document.getElementById("relay-ai-status");
+      if (aiBanner) aiBanner.style.display = "flex";
+      if (aiStatus) aiStatus.textContent = "Analysing page for relay notes\u2026";
+      btnAiAnalyseRelay.disabled = true;
+      btnAiAnalyseRelay.innerHTML = "<span>\u23F3</span><span>Analysing\u2026</span>";
+      parent.postMessage({
+        pluginMessage: {
+          type: "GENERATE_AI_RELAY_NOTES",
+          audit: lastAudit.audit,
+          pageName: lastAudit.pageName
+        }
+      }, "*");
+    });
+  }
   function renderUnsupportedNotice(audit) {
     const container = document.getElementById("unsupported-container");
     if (!container) return;
@@ -2098,6 +2405,7 @@ Answer in at most 50 words explaining the principle, rule, or architectural trad
         break;
       }
       case "AUDIT_RESULTS": {
+        lastAudit = { audit: msg.audit, pageName: msg.pageName };
         renderAuditResults(msg.audit, msg.pageName);
         renderUnsupportedNotice(msg.audit);
         break;
@@ -2166,6 +2474,9 @@ Answer in at most 50 words explaining the principle, rule, or architectural trad
               learnerState = msg.result.state;
               const xpEl = document.getElementById("stat-xp");
               if (xpEl && learnerState) xpEl.textContent = `${learnerState.xp} XP`;
+              pendingPracticeContext = null;
+              renderPathTab();
+              switchTab("path");
             }
           } else {
             resBox.innerHTML = `
@@ -2184,6 +2495,34 @@ Answer in at most 50 words explaining the principle, rule, or architectural trad
         learnerState = msg.state;
         showToast(`Transfer check: Gaps found on real page. Dropped ${msg.droppedSkills.join(", ")} to Box 0.`);
         renderPathTab();
+        break;
+      }
+      case "AI_RELAY_NOTES_READY": {
+        const aiBanner = document.getElementById("relay-ai-banner");
+        const aiBtn = document.getElementById("btn-ai-analyse-relay");
+        if (aiBanner) aiBanner.style.display = "none";
+        if (aiBtn) {
+          aiBtn.disabled = false;
+          aiBtn.innerHTML = "<span>\u2728</span><span>AI Analyse</span>";
+        }
+        if (msg.state) {
+          learnerState = msg.state;
+          renderRelayTab(msg.state);
+          switchTab("relay");
+        }
+        const offlineLabel = msg.offline ? " (offline fallback)" : "";
+        showToast(`\u2728 ${msg.count} AI relay note${msg.count !== 1 ? "s" : ""} added${offlineLabel}.`);
+        break;
+      }
+      case "AI_RELAY_NOTES_ERROR": {
+        const aiBanner = document.getElementById("relay-ai-banner");
+        const aiBtn = document.getElementById("btn-ai-analyse-relay");
+        if (aiBanner) aiBanner.style.display = "none";
+        if (aiBtn) {
+          aiBtn.disabled = false;
+          aiBtn.innerHTML = "<span>\u2728</span><span>AI Analyse</span>";
+        }
+        showToast(msg.error || "Could not generate relay notes.");
         break;
       }
       case "TOAST": {

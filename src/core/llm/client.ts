@@ -22,7 +22,9 @@ export class ResilientLlmClient implements LlmClient {
       (typeof __SOUSARTIST_PROXY_URL__ !== 'undefined' ? __SOUSARTIST_PROXY_URL__ : '');
   }
 
-  // Simple string hash for payload caching
+  // djb2 32-bit string hash for payload cache deduplication.
+  // This is NOT a cryptographic hash — it prevents duplicate LLM calls for identical
+  // prompt+system pairs within a single plugin session, not across restarts.
   private hashPayload(payload: RequestPayload): string {
     const str = `${payload.systemPrompt || ''}::${payload.prompt}`;
     let hash = 0;

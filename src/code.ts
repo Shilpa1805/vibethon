@@ -10,7 +10,10 @@ import { loadLearnerState, saveLearnerState } from './adapters/figma/storage';
 import { advanceLeitnerBox, resetLeitnerOnAuditFailure } from './core/learner/leitner';
 import { recordLessonCompletion } from './core/learner/xp';
 import { getTodayDateString } from './core/learner/state';
-import { DesignFacts, SkillId, ExceptionReason } from './core/types';
+import { DesignFacts, SkillId, ExceptionReason, AuditSummary } from './core/types';
+import { SousArtistCoach } from './core/llm/coach';
+
+const coach = new SousArtistCoach();
 
 figma.showUI(__html__, { width: 380, height: 640, themeColors: true });
 
@@ -307,6 +310,19 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: any }) => {
       break;
     }
 
+    case 'CREATE_STANDARDS_PROFILE': {
+      if (msg.profile && typeof msg.profile === 'object') {
+        const state = await loadLearnerState();
+        if (!state.profiles) state.profiles = [];
+        state.profiles.push(msg.profile);
+        state.activeProfileId = msg.profile.id;
+        await saveLearnerState(state);
+        figma.notify(`Standards Profile: "${msg.profile.name}" created and active.`);
+        figma.ui.postMessage({ type: 'LEARNER_STATE_LOADED', state });
+      }
+      break;
+    }
+
     case 'ADD_EXEMPTION': {
       if (typeof msg.nodeId === 'string') {
         const state = await loadLearnerState();
@@ -420,6 +436,47 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: any }) => {
     case 'NOTIFY': {
       if (typeof msg.message === 'string') {
         figma.notify(msg.message, { timeout: msg.timeout || 3000 });
+      }
+      break;
+    }
+
+    case 'GENERATE_AI_RELAY_NOTES': {
+      // Read audit summary and page name from UI, generate relay notes via coach, save to state
+      try {
+        const audit: AuditSummary = msg.audit;
+        const pageName: string = msg.pageName || figma.currentPage.name;
+        const { notes, offline } = await coach.generateRelayNotes(audit, pageName);
+
+        const state = await loadLearnerState();
+        state.relayNotes = state.relayNotes || [];
+
+        for (const n of notes) {
+          state.relayNotes.unshift({
+            id: `relay-ai-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            author: offline ? 'SousArtist (offline)' : 'SousArtist AI',
+            context: 'team',
+            topic: n.topic as any,
+            title: n.title,
+            guideline: n.guideline,
+            tradeoffReason: n.tradeoffReason || '',
+            targetScope: n.targetScope || pageName,
+            createdAt: 'Just now',
+          });
+        }
+
+        await saveLearnerState(state);
+        figma.notify(`✨ ${notes.length} AI relay note${notes.length !== 1 ? 's' : ''} added.`);
+        figma.ui.postMessage({
+          type: 'AI_RELAY_NOTES_READY',
+          state,
+          offline,
+          count: notes.length,
+        });
+      } catch (err: any) {
+        figma.ui.postMessage({
+          type: 'AI_RELAY_NOTES_ERROR',
+          error: err?.message || 'Failed to generate relay notes.',
+        });
       }
       break;
     }

@@ -14,8 +14,9 @@ import {
   sanitizeLearnerState,
 } from '../src/core/learner/state';
 import { verifyPracticeFrame } from '../src/core/lessons/verify';
-import { hexToRgb } from '../src/core/analyzers/contrast';
-import { DesignFacts } from '../src/core/types';
+import { hexToRgb, analyzeContrast } from '../src/core/analyzers/contrast';
+import { analyzeSpacing } from '../src/core/analyzers/spacing';
+import { DesignFacts, StandardsProfile } from '../src/core/types';
 
 describe('Leitner Spaced Repetition', () => {
   it('advances box by 1 on pass and caps at box 4 with review intervals', () => {
@@ -162,3 +163,78 @@ describe('Deterministic Lesson Verification', () => {
     expect(passRes.passed).toBe(true);
   });
 });
+
+describe('Institutional Standards & Custom Constraints', () => {
+  it('enforces custom institutional constraints (WCAG AAA ratio 7:1 and 4pt grid with exceptions)', () => {
+    const customInstitution: StandardsProfile = {
+      id: 'profile-stanford-health',
+      name: 'Stanford Health System',
+      context: 'team',
+      description: 'Strict medical accessibility and 4pt layout system',
+      spacing: {
+        baseGrid: 4,
+        allowedExceptions: [2, 6],
+      },
+      naming: {
+        pattern: 'pascal-case',
+        forbiddenDefaults: true,
+      },
+      contrast: {
+        standard: 'AAA',
+        minNormalRatio: 7.0,
+        minLargeRatio: 4.5,
+      },
+      autoLayout: {
+        strictness: 'all-multi-child',
+      },
+      exemptions: [],
+    };
+
+    const facts: DesignFacts = {
+      nodes: [
+        {
+          id: 'card',
+          type: 'FRAME',
+          name: 'CardContainer',
+          parentId: null,
+          childCount: 2,
+          layoutMode: 'VERTICAL',
+          itemSpacing: 6, // 6 is not multiple of 4, but is an allowed exception [2, 6]!
+          padding: { l: 8, r: 8, t: 8, b: 8 },
+          fontSize: null,
+          fontBold: null,
+          textColor: null,
+          fillColor: { r: 1, g: 1, b: 1 },
+        },
+        {
+          id: 'text-node',
+          type: 'TEXT',
+          name: 'PatientLabel',
+          parentId: 'card',
+          childCount: 0,
+          layoutMode: 'NONE',
+          itemSpacing: null,
+          padding: null,
+          fontSize: 14,
+          fontBold: false,
+          textColor: hexToRgb('767676'), // ~4.54:1 (passes AA 4.5, fails AAA 7.0)
+          fillColor: null,
+        },
+      ],
+    };
+
+    // Under default profile (AA), #767676 text passes
+    const aaFindings = analyzeContrast(facts);
+    expect(aaFindings.length).toBe(0);
+
+    // Under custom institution profile (AAA), #767676 fails because ratio < 7.0:1
+    const aaaFindings = analyzeContrast(facts, customInstitution);
+    expect(aaaFindings.length).toBe(1);
+    expect(aaaFindings[0].expected.minRatio).toBe(7.0);
+
+    // Spacing with itemSpacing = 6px passes because 6 is in allowedExceptions [2, 6]
+    const spacingFindings = analyzeSpacing(facts, customInstitution);
+    expect(spacingFindings.length).toBe(0);
+  });
+});
+
