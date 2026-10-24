@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SousArtist</title>
+  <!-- INLINE_CSS -->
+</head>
+<body>
+  <header>
+    <div class="brand-row">
+      <div class="brand-title">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+          <line x1="9" y1="9" x2="9.01" y2="9"/>
+          <line x1="15" y1="9" x2="15.01" y2="9"/>
+        </svg>
+        <span>SousArtist</span>
+        <span class="badge-tag">Coach</span>
+      </div>
+      <div class="user-stats">
+        <div class="stat-pill" title="Experience Points">
+          <span>⚡</span>
+          <span id="stat-xp">0 XP</span>
+        </div>
+        <div class="stat-pill" title="Day Streak">
+          <span>🔥</span>
+          <span id="stat-streak">0d</span>
+        </div>
+      </div>
+    </div>
+    <nav class="nav-tabs" role="tablist">
+      <button class="tab-btn active" role="tab" id="tab-btn-path" data-tab="path" aria-selected="true" aria-controls="tab-path">Path</button>
+      <button class="tab-btn" role="tab" id="tab-btn-audit" data-tab="audit" aria-selected="false" aria-controls="tab-audit">Audit</button>
+      <button class="tab-btn" role="tab" id="tab-btn-coach" data-tab="coach" aria-selected="false" aria-controls="tab-coach">Coach</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- PATH TAB -->
+    <section class="tab-content active" id="tab-path" role="tabpanel" aria-labelledby="tab-btn-path">
+      <div class="card" id="daily-goal-card">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h3 style="font-size:13px; font-weight:600;">Daily Goal</h3>
+          <span style="font-size:11px; color:var(--text-secondary);" id="daily-goal-text">0 / 1 completed</span>
+        </div>
+        <div style="background:var(--border-color); height:6px; border-radius:3px; margin-top:8px; overflow:hidden;">
+          <div id="daily-goal-bar" style="background:var(--accent-color); width:0%; height:100%; transition:width 0.3s ease;"></div>
+        </div>
+      </div>
+
+      <div id="path-container" style="display:flex; flex-direction:column; gap:12px;">
+        <!-- Filled dynamically -->
+      </div>
+    </section>
+
+    <!-- AUDIT TAB -->
+    <section class="tab-content" id="tab-audit" role="tabpanel" aria-labelledby="tab-btn-audit">
+      <button class="btn-primary" id="btn-run-audit" style="width:100%;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        Audit this page (read-only)
+      </button>
+
+      <!-- Selection probe for M1 verification -->
+      <button class="btn-secondary" id="btn-check-selection" style="width:100%;">
+        Check Figma Selection Count
+      </button>
+      <div id="selection-status" style="font-size:12px; color:var(--text-secondary); text-align:center;"></div>
+
+      <div class="privacy-notice">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+        <span>Only structural numbers leave your file.</span>
+      </div>
+
+      <div id="audit-results" style="display:flex; flex-direction:column; gap:12px; margin-top:8px;">
+        <!-- Findings grouped by skill -->
+      </div>
+    </section>
+
+    <!-- COACH TAB -->
+    <section class="tab-content" id="tab-coach" role="tabpanel" aria-labelledby="tab-btn-coach">
+      <div class="card" style="font-size:12px; color:var(--text-secondary);">
+        Ask questions about design principles (contrast, 8pt grid, naming, auto-layout). The coach guides your thinking, but will never design or generate layouts for you.
+      </div>
+      <div id="coach-chat" style="display:flex; flex-direction:column; gap:8px; min-height:160px; max-height:300px; overflow-y:auto;">
+        <!-- Chat history -->
+      </div>
+      <div style="display:flex; gap:8px; margin-top:auto;">
+        <input type="text" id="coach-input" placeholder="Ask the coach..." style="flex:1; background:var(--bg-secondary); border:1px solid var(--border-color); color:var(--text-primary); padding:8px 12px; border-radius:6px; font-size:13px;" />
+        <button class="btn-primary" id="btn-coach-send">Ask</button>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" style="display:none; position:fixed; bottom:16px; left:16px; right:16px; background:#1e293b; color:#fff; padding:10px 14px; border-radius:6px; font-size:12px; box-shadow:0 4px 12px rgba(0,0,0,0.3); border:1px solid var(--border-color); z-index:9999;"></div>
+
+  <!-- INLINE_JS -->
+</body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "name": "sousartist",
+  "version": "1.0.0",
+  "description": "Figma plugin coaching new designers Duolingo-style using their own file as the source of truth.",
+  "main": "dist/code.js",
+  "type": "module",
+  "scripts": {
+    "build": "node build.js",
+    "watch": "node build.js --watch",
+    "test": "vitest run",
+    "eval:guardrails": "node --import tsx scripts/eval-guardrails.ts || npx tsx scripts/eval-guardrails.ts"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.106.0",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.7"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "SousArtist",
+  "id": "147582047392819201",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "dist/ui.html",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": [
+      "https://generativelanguage.googleapis.com",
+      "https://api.openai.com",
+      "http://localhost:*"
+    ],
+    "reasoning": "Sends anonymised structural design numbers to generate coaching hints."
+  }
+}
