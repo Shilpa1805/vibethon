@@ -259,15 +259,15 @@ function renderAuditResults(audit: AuditSummary, pageName: string) {
     const history = learnerState?.auditHistory || [];
     const lastEntry = history.length > 0 ? history[history.length - 1] : null;
 
-    if (lastEntry && typeof lastEntry.totalGaps === 'number' && lastEntry.totalGaps > audit.totalCount) {
-      const resolvedCount = lastEntry.totalGaps - audit.totalCount;
+    if (lastEntry && typeof lastEntry.totalFindings === 'number' && lastEntry.totalFindings > audit.totalCount) {
+      const resolvedCount = lastEntry.totalFindings - audit.totalCount;
       deltaContainer.style.display = 'block';
       deltaContainer.innerHTML = `
         <div class="card" style="background:rgba(16,185,129,0.12); border-color:var(--success-color); padding:10px 14px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
           <div>
             <div style="font-weight:700; color:var(--success-color); font-size:13px; display:flex; align-items:center; gap:6px;">
               <span>🎉</span>
-              <span>${lastEntry.totalGaps} → ${audit.totalCount} Issues Resolved!</span>
+              <span>${lastEntry.totalFindings} → ${audit.totalCount} Issues Resolved!</span>
             </div>
             <div style="font-size:11px; color:var(--text-secondary); margin-top:2px;">
               You fixed ${resolvedCount} design gap${resolvedCount !== 1 ? 's' : ''} by hand in Figma.
@@ -1291,7 +1291,7 @@ window.onmessage = (event) => {
           if (msg.result.state) {
             learnerState = msg.result.state;
             const xpEl = document.getElementById('stat-xp');
-            if (xpEl) xpEl.textContent = `${learnerState.xp} XP`;
+            if (xpEl && learnerState) xpEl.textContent = `${learnerState.xp} XP`;
           }
         } else {
           resBox.innerHTML = `

@@ -54,7 +54,7 @@ describe('Prompt Privacy & Anti-Leak (Rule 4: Zero Content Leaks)', () => {
         nodeName: xssLayer,
         name: 'Confidential Internal',
         text: 'Financial Q4 Data',
-        violation: true,
+        violation: 1,
       },
       expected: {
         nodeName: secretLayer,

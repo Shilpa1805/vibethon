@@ -8,10 +8,12 @@
     "build": "node build.js",
     "watch": "node build.js --watch",
     "test": "vitest run",
+    "typecheck": "tsc --noEmit",
     "eval:guardrails": "node --import tsx scripts/eval-guardrails.ts || npx tsx scripts/eval-guardrails.ts"
   },
   "devDependencies": {
     "@figma/plugin-typings": "^1.106.0",
+    "@types/node": "^26.6.5",
     "esbuild": "^0.25.0",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",
