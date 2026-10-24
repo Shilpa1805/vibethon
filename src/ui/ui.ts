@@ -1,43 +1,205 @@
-// SousArtist - UI Script
+// SousArtist - UI Controller
+import { AuditSummary, Finding, SkillId } from '../core/types';
 
-// Tab navigation
+// Tab switching
 const tabButtons = document.querySelectorAll<HTMLButtonElement>('.tab-btn');
 const tabContents = document.querySelectorAll<HTMLElement>('.tab-content');
 
-tabButtons.forEach((btn) => {
-  btn.addEventListener('click', () => {
-    const targetTab = btn.getAttribute('data-tab');
-    if (!targetTab) return;
-
-    tabButtons.forEach((b) => {
-      b.classList.remove('active');
-      b.setAttribute('aria-selected', 'false');
-    });
-    tabContents.forEach((c) => c.classList.remove('active'));
-
-    btn.classList.add('active');
-    btn.setAttribute('aria-selected', 'true');
-    const content = document.getElementById(`tab-${targetTab}`);
-    if (content) {
-      content.classList.add('active');
-    }
+export function switchTab(targetTab: string) {
+  tabButtons.forEach((b) => {
+    const isTarget = b.getAttribute('data-tab') === targetTab;
+    b.classList.toggle('active', isTarget);
+    b.setAttribute('aria-selected', isTarget ? 'true' : 'false');
   });
-});
-
-// Selection button probe (Milestone 1 requirement)
-const btnCheckSelection = document.getElementById('btn-check-selection');
-const selectionStatus = document.getElementById('selection-status');
-
-if (btnCheckSelection) {
-  btnCheckSelection.addEventListener('click', () => {
-    parent.postMessage({ pluginMessage: { type: 'GET_SELECTION_COUNT' } }, '*');
-    if (selectionStatus) {
-      selectionStatus.textContent = 'Querying Figma selection...';
-    }
+  tabContents.forEach((c) => {
+    c.classList.toggle('active', c.id === `tab-${targetTab}`);
   });
 }
 
-// Receive messages from plugin main thread
+tabButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const target = btn.getAttribute('data-tab');
+    if (target) switchTab(target);
+  });
+});
+
+// Selection Probe for M1
+const btnCheckSelection = document.getElementById('btn-check-selection');
+const selectionStatus = document.getElementById('selection-status');
+if (btnCheckSelection) {
+  btnCheckSelection.addEventListener('click', () => {
+    parent.postMessage({ pluginMessage: { type: 'GET_SELECTION_COUNT' } }, '*');
+    if (selectionStatus) selectionStatus.textContent = 'Querying Figma selection...';
+  });
+}
+
+// Audit Tab Logic
+const btnRunAudit = document.getElementById('btn-run-audit') as HTMLButtonElement | null;
+const auditResults = document.getElementById('audit-results');
+
+if (btnRunAudit) {
+  btnRunAudit.addEventListener('click', () => {
+    btnRunAudit.disabled = true;
+    btnRunAudit.textContent = 'Auditing page layers (read-only)...';
+    if (auditResults) {
+      auditResults.innerHTML = `
+        <div style="text-align:center; padding:24px 0; color:var(--text-secondary);">
+          <div style="font-weight:600; margin-bottom:4px;">Scanning layer tree...</div>
+          <div style="font-size:11px; color:var(--text-muted);">Extracting anonymized structural facts</div>
+        </div>
+      `;
+    }
+    parent.postMessage({ pluginMessage: { type: 'RUN_AUDIT' } }, '*');
+  });
+}
+
+function renderAuditResults(audit: AuditSummary, pageName: string) {
+  if (btnRunAudit) {
+    btnRunAudit.disabled = false;
+    btnRunAudit.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"/>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      Audit this page (read-only)
+    `;
+  }
+
+  if (!auditResults) return;
+
+  if (audit.totalCount === 0) {
+    auditResults.innerHTML = `
+      <div class="card" style="text-align:center; padding:20px; border-color:var(--success-color);">
+        <div style="font-size:24px; margin-bottom:6px;">✨</div>
+        <div style="font-weight:600; color:var(--success-color); font-size:14px;">Clean Page Audit!</div>
+        <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">
+          No contrast, spacing, naming, or auto-layout issues found on "${pageName}".
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  let html = '';
+
+  if (audit.truncated) {
+    html += `
+      <div class="card" style="background:rgba(245, 158, 11, 0.1); border-color:var(--warning-color); padding:10px; font-size:11px; color:var(--warning-color);">
+        ⚠️ Page contains over 5,000 nodes. Audit was capped at the first 5,000 nodes.
+      </div>
+    `;
+  }
+
+  // Summary header
+  html += `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
+      <span style="font-weight:700; font-size:13px;">Found ${audit.totalCount} Gap${audit.totalCount === 1 ? '' : 's'}</span>
+      <span style="font-size:11px; color:var(--text-secondary);">${pageName}</span>
+    </div>
+  `;
+
+  // Per-skill cards
+  const skillMeta: Record<SkillId, { label: string; icon: string }> = {
+    'contrast': { label: 'Color Contrast', icon: '🌓' },
+    'spacing-grid': { label: 'Spacing Grid', icon: '📐' },
+    'layer-naming': { label: 'Layer Naming', icon: '🏷️' },
+    'auto-layout': { label: 'Auto Layout', icon: '📦' },
+  };
+
+  const skills: SkillId[] = ['contrast', 'spacing-grid', 'layer-naming', 'auto-layout'];
+
+  for (const skill of skills) {
+    const summary = audit.bySkill[skill];
+    if (summary.count === 0) continue;
+
+    const meta = skillMeta[skill];
+    const skillFindings = audit.findings.filter((f) => f.skill === skill);
+
+    html += `
+      <div class="card" style="display:flex; flex-direction:column; gap:10px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span>${meta.icon}</span>
+            <strong style="font-size:13px;">${meta.label}</strong>
+            <span style="background:var(--bg-hover); padding:1px 6px; border-radius:10px; font-size:11px; font-weight:600;">
+              ${summary.count}
+            </span>
+          </div>
+          <button class="btn-secondary btn-study" data-skill="${skill}" style="padding:4px 8px; font-size:11px;">
+            Study this
+          </button>
+        </div>
+
+        <div style="display:flex; gap:6px; font-size:11px;">
+          ${summary.high > 0 ? `<span style="color:var(--danger-color); font-weight:600;">${summary.high} High</span>` : ''}
+          ${summary.medium > 0 ? `<span style="color:var(--warning-color); font-weight:600;">${summary.medium} Med</span>` : ''}
+          ${summary.low > 0 ? `<span style="color:var(--text-secondary); font-weight:600;">${summary.low} Low</span>` : ''}
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:6px; max-height:160px; overflow-y:auto;">
+          ${skillFindings.slice(0, 5).map((f) => renderFindingItem(f)).join('')}
+          ${skillFindings.length > 5 ? `<div style="font-size:11px; color:var(--text-muted); text-align:center;">+${skillFindings.length - 5} more</div>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  auditResults.innerHTML = html;
+
+  // Wire "Study this" buttons
+  auditResults.querySelectorAll('.btn-study').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const skill = btn.getAttribute('data-skill');
+      if (skill) {
+        switchTab('path');
+        const lessonTarget = document.getElementById(`lesson-node-${skill}`);
+        if (lessonTarget) {
+          lessonTarget.scrollIntoView({ behavior: 'smooth' });
+          lessonTarget.click();
+        }
+      }
+    });
+  });
+
+  // Wire inspect layer clicks
+  auditResults.querySelectorAll('.btn-inspect').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const nodeId = btn.getAttribute('data-node-id');
+      if (nodeId) {
+        parent.postMessage({ pluginMessage: { type: 'SELECT_NODE', nodeId } }, '*');
+      }
+    });
+  });
+}
+
+function renderFindingItem(f: Finding): string {
+  let measuredStr = '';
+  if (f.skill === 'contrast') {
+    measuredStr = `Ratio: ${f.measured.ratio}:1 (needs ${f.expected.minRatio}:1)`;
+  } else if (f.skill === 'spacing-grid') {
+    measuredStr = `${f.measured.property}: ${f.measured.value}px (use ${f.expected.recommended8pt}px)`;
+  } else if (f.skill === 'layer-naming') {
+    measuredStr = `Name: "${f.measured.currentName}"`;
+  } else if (f.skill === 'auto-layout') {
+    measuredStr = `${f.measured.childCount} children without auto-layout`;
+  }
+
+  const severityColor = f.severity === 'high' ? 'var(--danger-color)' : f.severity === 'medium' ? 'var(--warning-color)' : 'var(--text-secondary)';
+
+  return `
+    <div style="background:var(--bg-primary); border:1px solid var(--border-color); border-radius:4px; padding:6px 8px; display:flex; justify-content:space-between; align-items:center; font-size:11px;">
+      <div>
+        <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:${severityColor}; margin-right:4px;"></span>
+        <span>${measuredStr}</span>
+      </div>
+      <button class="btn-inspect" data-node-id="${f.nodeId}" style="background:none; border:none; color:var(--accent-color); cursor:pointer; font-size:11px; text-decoration:underline;">
+        Locate
+      </button>
+    </div>
+  `;
+}
+
+// Window message dispatcher
 window.onmessage = (event) => {
   const msg = event.data.pluginMessage;
   if (!msg) return;
@@ -49,6 +211,18 @@ window.onmessage = (event) => {
       }
       break;
     }
+    case 'AUDIT_RESULTS': {
+      renderAuditResults(msg.audit, msg.pageName);
+      break;
+    }
+    case 'AUDIT_ERROR': {
+      if (btnRunAudit) {
+        btnRunAudit.disabled = false;
+        btnRunAudit.textContent = 'Audit this page (read-only)';
+      }
+      showToast(msg.error || 'Audit encountered an issue.');
+      break;
+    }
     case 'TOAST': {
       showToast(msg.message);
       break;
@@ -56,7 +230,7 @@ window.onmessage = (event) => {
   }
 };
 
-function showToast(message: string, durationMs = 3500) {
+export function showToast(message: string, durationMs = 3500) {
   const toast = document.getElementById('toast');
   if (!toast) return;
   toast.textContent = message;
