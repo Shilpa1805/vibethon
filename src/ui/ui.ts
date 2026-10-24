@@ -225,6 +225,25 @@ function renderAuditResults(audit: AuditSummary, pageName: string) {
     });
   });
 
+  // Wire Dismiss buttons
+  auditResults.querySelectorAll('.btn-dismiss-finding').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.getAttribute('data-id');
+      const card = document.getElementById(`card-${id}`);
+      if (card) {
+        card.style.opacity = '0.5';
+        card.innerHTML = `
+          <div style="padding:8px 12px; font-size:11px; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center;">
+            <span>✓ Marked as intentional design choice</span>
+            <span style="font-size:10px; color:var(--text-dim);">(Will not flag)</span>
+          </div>
+        `;
+        showToast('Marked as intentional.');
+      }
+    });
+  });
+
   // Wire Locate buttons
   auditResults.querySelectorAll('.btn-inspect').forEach((btn) => {
     btn.addEventListener('click', (e) => {
@@ -324,12 +343,15 @@ function renderFindingItem(f: Finding): string {
         ` : ''}
 
         <!-- Direct Actions -->
-        <div style="display:flex; gap:8px; margin-top:4px; padding-top:6px; border-top:1px solid var(--border-color);">
-          <button class="btn-ask-about-finding btn-secondary" data-node-name="${f.nodeName || 'layer'}" data-skill="${f.skill}" data-summary="${f.summary || measuredStr}" style="flex:1; padding:5px 8px; font-size:11px;">
+        <div style="display:flex; gap:6px; margin-top:4px; padding-top:6px; border-top:1px solid var(--border-color); flex-wrap:wrap;">
+          <button class="btn-ask-about-finding btn-secondary" data-node-name="${f.nodeName || 'layer'}" data-skill="${f.skill}" data-summary="${f.summary || measuredStr}" style="flex:1; min-width:130px; padding:5px 8px; font-size:11px;">
             💬 Ask Coach About This
           </button>
+          <button class="btn-dismiss-finding btn-secondary" data-id="${f.id}" style="padding:5px 8px; font-size:11px;" title="Mark this as intentional design choice">
+            ✓ Dismiss (Intentional)
+          </button>
           <button class="btn-study-sandbox btn-secondary" data-skill="${f.skill}" style="padding:5px 8px; font-size:11px;" title="Open isolated 2-minute practice lesson">
-            📚 Practice in Sandbox
+            📚 Sandbox
           </button>
         </div>
       </div>
