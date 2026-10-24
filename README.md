@@ -167,7 +167,7 @@ The plugin includes a lightweight serverless proxy in `api/llm.ts` to keep API k
 
 ### Environment Variables
 - `SOUSARTIST_LLM_KEY`: Your Google Gemini API key (set on the proxy host, e.g. Vercel).
-- `GEMINI_MODEL`: Model identifier (default: `gemini-2.0-flash-lite`). Read from env at runtime so you can upgrade without a code change. Check [ai.google.dev/gemini-api/docs/models](https://ai.google.dev/gemini-api/docs/models) for current model IDs — Google deprecates models frequently.
+- `GEMINI_MODEL`: Model identifier (default: `gemini-3.5-flash`). Read from env at runtime so you can upgrade without a code change. Check [ai.google.dev/gemini-api/docs/models](https://ai.google.dev/gemini-api/docs/models) for current model IDs — Google deprecates models frequently.
 
 ### Build Variable
 - `SOUSARTIST_PROXY_URL`: Full URL of your deployed proxy endpoint (e.g. `https://your-app.vercel.app/api/llm`). Injected during `npm run build`. If left unset, SousArtist runs fully offline with deterministic fallbacks.

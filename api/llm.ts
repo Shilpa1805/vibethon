@@ -98,10 +98,10 @@ export default async function handler(req: any, res: any) {
 
     // Model is read from the GEMINI_MODEL environment variable so it can be swapped
     // without a code change as Google rotates deprecations.
-    // Default: gemini-2.0-flash-lite (GA since early 2025, not yet deprecated as of Oct 2026).
+    // Default: gemini-3.5-flash (active as of Oct 2026).
     // See: https://ai.google.dev/gemini-api/docs/models for current model IDs.
     // Set GEMINI_MODEL=<new-model-id> in your Vercel/deployment env to upgrade.
-    const model = process.env.GEMINI_MODEL || 'gemini-2.0-flash-lite';
+    const model = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const requestPayload: any = {
