@@ -3,12 +3,14 @@
 
 import { AuditSummary, Finding, LearnerState, SkillId } from '../core/types';
 import { LESSONS, LessonDefinition } from '../core/lessons/lessons';
+import { SousArtistCoach } from '../core/llm/coach';
 
 let learnerState: LearnerState | null = null;
 let activeSkill: SkillId = 'contrast';
 let activeFrameId: string | null = null;
-let currentHintLevel = 0; // 0: no hint, 1..4: hint ladder
+let currentHintLevel = 0;
 let hintsUsedInSession = 0;
+const coach = new SousArtistCoach();
 
 // Tab Switching
 const tabButtons = document.querySelectorAll<HTMLButtonElement>('.tab-btn');
@@ -264,7 +266,6 @@ export function renderPathTab() {
 
   pathContainer.innerHTML = html;
 
-  // Wire header clicks to expand/collapse
   pathContainer.querySelectorAll('.lesson-header').forEach((el) => {
     el.addEventListener('click', () => {
       const skill = el.getAttribute('data-skill') as SkillId;
@@ -276,7 +277,6 @@ export function renderPathTab() {
     });
   });
 
-  // Wire lesson interactive buttons
   const btnSetup = document.getElementById('btn-setup-practice');
   const btnVerify = document.getElementById('btn-verify-practice');
   const btnHint = document.getElementById('btn-request-hint');
@@ -303,12 +303,12 @@ export function renderPathTab() {
   }
 
   if (btnHint) {
-    btnHint.addEventListener('click', () => {
+    btnHint.addEventListener('click', async () => {
       if (currentHintLevel < 4) {
         currentHintLevel += 1;
         hintsUsedInSession += 1;
       }
-      renderHintBox();
+      await renderHintBox();
     });
   }
 }
@@ -372,16 +372,94 @@ function getHintText(lesson: LessonDefinition, level: number): string {
   return `<strong>Level 4 (Worked Example):</strong> ${lesson.workedExample}`;
 }
 
-function renderHintBox() {
+async function renderHintBox() {
   const box = document.getElementById('hint-content-box');
   const btn = document.getElementById('btn-request-hint');
   const lesson = LESSONS[activeSkill];
-  if (box && lesson) {
-    box.innerHTML = getHintText(lesson, currentHintLevel);
+  if (!box || !lesson) return;
+
+  if (currentHintLevel === 0) {
+    box.innerHTML = getHintText(lesson, 0);
+    return;
   }
+
+  // Fetch online graded hint if level 1..3, falling back safely
+  if (currentHintLevel < 4) {
+    box.innerHTML = '<span style="color:var(--text-muted);">Generating graded coaching hint...</span>';
+    const hintRes = await coach.getGradedHint({
+      skill: activeSkill,
+      level: currentHintLevel,
+      measured: { ratio: 2.1 },
+      expected: { minRatio: 4.5 },
+      attempts: hintsUsedInSession,
+    });
+    box.innerHTML = `<strong>Level ${currentHintLevel}:</strong> ${hintRes.hint} ${hintRes.offline ? '<span style="font-size:10px; color:var(--text-muted);">(offline hint)</span>' : ''}`;
+  } else {
+    box.innerHTML = `<strong>Level 4 (Worked Example):</strong> ${lesson.workedExample}`;
+  }
+
   if (btn) {
-    btn.textContent = currentHintLevel === 0 ? 'Need a hint?' : currentHintLevel < 4 ? 'Next hint level' : 'Worked example';
+    btn.textContent = currentHintLevel < 4 ? 'Next hint level' : 'Worked example';
   }
+}
+
+// Coach Tab Chat Implementation
+const coachInput = document.getElementById('coach-input') as HTMLInputElement | null;
+const btnCoachSend = document.getElementById('btn-coach-send') as HTMLButtonElement | null;
+const coachChat = document.getElementById('coach-chat');
+
+async function sendCoachMessage() {
+  if (!coachInput || !coachChat) return;
+  const text = coachInput.value.trim();
+  if (!text) return;
+
+  coachInput.value = '';
+
+  // Append user bubble
+  const userBubble = document.createElement('div');
+  userBubble.style.cssText = 'background:var(--accent-color); color:#fff; padding:8px 12px; border-radius:12px 12px 2px 12px; max-width:85%; align-self:flex-end; font-size:12px; margin-left:auto;';
+  userBubble.textContent = text;
+  coachChat.appendChild(userBubble);
+  coachChat.scrollTop = coachChat.scrollHeight;
+
+  // Typing indicator
+  const typingBubble = document.createElement('div');
+  typingBubble.style.cssText = 'background:var(--bg-secondary); border:1px solid var(--border-color); color:var(--text-secondary); padding:6px 10px; border-radius:12px 12px 12px 2px; max-width:85%; font-size:11px;';
+  typingBubble.textContent = 'Coach is thinking...';
+  coachChat.appendChild(typingBubble);
+  coachChat.scrollTop = coachChat.scrollHeight;
+
+  const result = await coach.handleUserQuery(text, activeSkill);
+
+  coachChat.removeChild(typingBubble);
+
+  // Coach response bubble
+  const coachBubble = document.createElement('div');
+  coachBubble.style.cssText = `background:var(--bg-card); border:1px solid ${result.intent === 'generate_design' ? 'var(--accent-color)' : 'var(--border-color)'}; color:var(--text-primary); padding:10px 12px; border-radius:12px 12px 12px 2px; max-width:90%; font-size:12px; line-height:1.4;`;
+
+  if (result.intent === 'generate_design') {
+    coachBubble.innerHTML = `
+      <div style="font-weight:700; color:var(--accent-color); font-size:11px; margin-bottom:4px; text-transform:uppercase;">Coaching Boundary</div>
+      <div>${result.response}</div>
+    `;
+  } else {
+    coachBubble.textContent = result.response;
+  }
+
+  coachChat.appendChild(coachBubble);
+  coachChat.scrollTop = coachChat.scrollHeight;
+}
+
+if (btnCoachSend) {
+  btnCoachSend.addEventListener('click', sendCoachMessage);
+}
+
+if (coachInput) {
+  coachInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      sendCoachMessage();
+    }
+  });
 }
 
 // Window Message Dispatcher
@@ -484,5 +562,5 @@ export function showToast(message: string, durationMs = 3500) {
   }, durationMs);
 }
 
-// Request initial state from plugin storage on launch
+// Initialize on launch
 parent.postMessage({ pluginMessage: { type: 'INIT_APP' } }, '*');

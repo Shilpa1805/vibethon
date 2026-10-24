@@ -377,12 +377,328 @@ button:focus-visible {
     }
   };
 
+  // src/core/llm/client.ts
+  var ResilientLlmClient = class {
+    constructor(options) {
+      this.cache = /* @__PURE__ */ new Map();
+      this.apiKey = options?.apiKey || (typeof process !== "undefined" ? process.env?.SOUSARTIST_LLM_KEY || "" : "");
+      this.endpoint = options?.endpoint || "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+    }
+    // Simple string hash for payload caching
+    hashPayload(payload) {
+      const str = `${payload.systemPrompt || ""}::${payload.prompt}`;
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = (hash << 5) - hash + char;
+        hash |= 0;
+      }
+      return `hash_${hash}`;
+    }
+    async generateText(prompt, systemPrompt) {
+      const payload = { prompt, systemPrompt };
+      const cacheKey = this.hashPayload(payload);
+      if (this.cache.has(cacheKey)) {
+        return this.cache.get(cacheKey);
+      }
+      if (!this.apiKey) {
+        throw new Error("OFFLINE_NO_KEY");
+      }
+      let lastError = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          if (attempt > 0) {
+            const jitterMs = 300 + Math.random() * 400;
+            await new Promise((r) => setTimeout(r, jitterMs));
+          }
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 8e3);
+          const url = `${this.endpoint}?key=${this.apiKey}`;
+          const body = {
+            contents: [
+              ...systemPrompt ? [{ role: "user", parts: [{ text: systemPrompt }] }] : [],
+              { role: "user", parts: [{ text: prompt }] }
+            ],
+            generationConfig: {
+              temperature: 0.2,
+              maxOutputTokens: 150
+            }
+          };
+          const response = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+            signal: controller.signal
+          });
+          clearTimeout(timeoutId);
+          if (!response.ok) {
+            throw new Error(`HTTP_${response.status}`);
+          }
+          const data = await response.json();
+          const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+          if (text) {
+            this.cache.set(cacheKey, text);
+            return text;
+          }
+        } catch (err) {
+          lastError = err;
+        }
+      }
+      throw lastError || new Error("LLM_REQUEST_FAILED");
+    }
+  };
+
+  // src/core/llm/prompts.ts
+  var SYSTEM_PROMPT = `You are SousArtist, a design coach for beginners. You teach; you never create.
+Rules:
+- Never produce designs, layouts, color palettes, copy, HTML, CSS, or code for the learner's work.
+- Use only the numbers provided in CONTEXT. Do not invent measurements.
+- Follow the requested hint level exactly. At levels 1-2, do not reveal the target value.
+- At most 60 words. Plain, encouraging language. No emoji.
+- If asked to design or fix something for the user, say you coach rather than create, and point to a lesson.
+Output: plain text only (hints) or JSON matching the given schema (diagnosis).`;
+  function formatHintPrompt(params) {
+    return `Provide a Level ${params.level} coaching hint for the skill "${params.skill}".
+CONTEXT NUMBERS:
+- Measured: ${JSON.stringify(params.measured)}
+- Target threshold: ${JSON.stringify(params.expected)}
+- Attempts so far: ${params.attempts}
+
+REQUIREMENTS FOR LEVEL ${params.level}:
+${params.level === 1 ? "- Ask a thoughtful Socratic question about the visual rhythm or readability. Do NOT reveal any target numbers or solutions." : params.level === 2 ? "- Name the exact design rule and mention the measured value. Do NOT reveal the final solution value." : "- Guide the learner with specific tool actions (which Figma panel, shortcut, or setting to adjust). State rule thresholds, but NEVER provide an exact hex code or layout coordinates."}
+Remember: At most 60 words. No code blocks. Plain, supportive tone.`;
+  }
+  function formatDiagnosisPrompt(summary) {
+    const anonymizedPayload = {};
+    const skills = ["contrast", "spacing-grid", "layer-naming", "auto-layout"];
+    for (const skill of skills) {
+      const stats = summary.bySkill[skill];
+      const samples = summary.findings.filter((f) => f.skill === skill).slice(0, 3).map((f) => ({ measured: f.measured, expected: f.expected }));
+      anonymizedPayload[skill] = {
+        counts: stats,
+        examples: samples
+      };
+    }
+    return `Given this audit of design gaps, prioritize which skill the beginner should learn first.
+CONTEXT:
+${JSON.stringify(anonymizedPayload, null, 2)}
+
+OUTPUT FORMAT: Return strictly a valid JSON object matching:
+{
+  "order": ["contrast", "spacing-grid", "layer-naming", "auto-layout"],
+  "reason": "Short explanation under 200 characters explaining why this skill was picked first."
+}`;
+  }
+
+  // src/core/llm/guard.ts
+  var FORBIDDEN_GENERATIVE_PATTERNS = [
+    /here is (a|the|your) (layout|design|palette|mockup|code|css|html|solution)/i,
+    /i have (designed|created|built|drawn|generated|fixed)/i,
+    /i designed/i,
+    /i created/i,
+    /copy and paste this (code|css|style|hex)/i,
+    /use this exact (code|hex|layout|color):/i
+  ];
+  var CODE_OR_HTML_REGEX = /(```|<\/?[a-z][\s\S]*>)/i;
+  var HEX_COLOR_REGEX = /#[0-9a-fA-F]{3,8}\b/;
+  function countWords(text) {
+    return text.trim().split(/\s+/).filter(Boolean).length;
+  }
+  function guardHint(text, level, expected) {
+    if (!text || text.trim().length === 0) {
+      return { ok: false, reason: "Empty output" };
+    }
+    if (CODE_OR_HTML_REGEX.test(text)) {
+      return { ok: false, reason: "Contains code fence or HTML tag" };
+    }
+    const words = countWords(text);
+    if (words > 70) {
+      return { ok: false, reason: `Word count exceeds 70 words (${words} words)` };
+    }
+    for (const pattern of FORBIDDEN_GENERATIVE_PATTERNS) {
+      if (pattern.test(text)) {
+        return { ok: false, reason: `Matches generative design pattern: ${pattern}` };
+      }
+    }
+    if (level <= 2 && HEX_COLOR_REGEX.test(text)) {
+      return { ok: false, reason: "Reveals hex color at hint level <= 2" };
+    }
+    if (level <= 2 && expected) {
+      for (const key of Object.keys(expected)) {
+        const val = expected[key];
+        if (typeof val === "number" || typeof val === "string") {
+          const strVal = String(val);
+          const targetRegex = new RegExp(`\\b${strVal}\\b`, "i");
+          if (targetRegex.test(text)) {
+            return { ok: false, reason: `Reveals expected target value "${strVal}" at hint level <= 2` };
+          }
+        }
+      }
+    }
+    return { ok: true };
+  }
+
+  // src/core/llm/fallback.ts
+  function rankSkills(summary) {
+    const allSkills = ["contrast", "spacing-grid", "layer-naming", "auto-layout"];
+    const scored = allSkills.map((skill) => {
+      const stats = summary.bySkill[skill] || { count: 0, high: 0, medium: 0, low: 0 };
+      const score = stats.high * 3 + stats.medium * 2 + stats.low;
+      return { skill, score, count: stats.count };
+    });
+    scored.sort((a, b) => b.score - a.score);
+    const order = scored.map((s) => s.skill);
+    const topSkill = scored[0];
+    let reason = "Prioritized based on highest severity gaps found in your audit.";
+    if (topSkill.count === 0) {
+      reason = "No active violations found. Starting with foundational contrast principles.";
+    } else if (topSkill.skill === "contrast") {
+      reason = "Contrast gaps impact readability and accessibility directly. Fix these first.";
+    } else if (topSkill.skill === "spacing-grid") {
+      reason = "Inconsistent spacing disrupts visual hierarchy and alignment across your card layout.";
+    } else if (topSkill.skill === "layer-naming") {
+      reason = "Default layer names slow down developer handoff and component maintenance.";
+    } else if (topSkill.skill === "auto-layout") {
+      reason = "Converting manual frames to Auto Layout establishes responsive behavior early.";
+    }
+    return {
+      order,
+      reason
+    };
+  }
+  function getCannedRedirect(closestSkill = "contrast") {
+    const titles = {
+      "contrast": "contrast",
+      "spacing-grid": "the 8pt spacing grid",
+      "layer-naming": "semantic layer naming",
+      "auto-layout": "auto layout"
+    };
+    return `I coach, I don't create. The design stays yours. Want a 2-minute lesson on ${titles[closestSkill]} so you can do this faster yourself?`;
+  }
+  function getStaticHint(skill, level) {
+    const lesson = LESSONS[skill];
+    if (!lesson) {
+      return "Review the core rule in the design guidelines.";
+    }
+    if (level <= 1) return lesson.staticHints[0];
+    if (level === 2) return lesson.staticHints[1];
+    if (level === 3) return lesson.staticHints[2];
+    return lesson.workedExample;
+  }
+
+  // src/core/llm/coach.ts
+  var SousArtistCoach = class {
+    constructor(client) {
+      this.client = client || new ResilientLlmClient();
+    }
+    async diagnoseGaps(summary) {
+      try {
+        const prompt = formatDiagnosisPrompt(summary);
+        const rawText = await this.client.generateText(prompt, SYSTEM_PROMPT);
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("NO_JSON_IN_RESPONSE");
+        const parsed = JSON.parse(jsonMatch[0]);
+        const validSkills = ["contrast", "spacing-grid", "layer-naming", "auto-layout"];
+        if (Array.isArray(parsed.order) && parsed.order.length > 0 && parsed.order.every((s) => validSkills.includes(s)) && new Set(parsed.order).size === parsed.order.length && typeof parsed.reason === "string" && parsed.reason.length <= 200) {
+          return {
+            order: parsed.order,
+            reason: parsed.reason,
+            offline: false
+          };
+        }
+        throw new Error("INVALID_DIAGNOSIS_SCHEMA");
+      } catch (err) {
+        const fallback = rankSkills(summary);
+        return {
+          ...fallback,
+          offline: true
+        };
+      }
+    }
+    async getGradedHint(params) {
+      if (params.level >= 4) {
+        return {
+          hint: getStaticHint(params.skill, 4),
+          level: 4,
+          guarded: true,
+          offline: true
+        };
+      }
+      try {
+        const prompt = formatHintPrompt(params);
+        let text = await this.client.generateText(prompt, SYSTEM_PROMPT);
+        let guardRes = guardHint(text, params.level, params.expected);
+        if (!guardRes.ok) {
+          const retryPrompt = `${prompt}
+STRICT WARNING: Your previous output was rejected (${guardRes.reason}). Under 60 words, NO code blocks, NO hex codes, NO target numbers.`;
+          text = await this.client.generateText(retryPrompt, SYSTEM_PROMPT);
+          guardRes = guardHint(text, params.level, params.expected);
+        }
+        if (guardRes.ok) {
+          return {
+            hint: text,
+            level: params.level,
+            guarded: true,
+            offline: false
+          };
+        }
+        return {
+          hint: getStaticHint(params.skill, params.level),
+          level: params.level,
+          guarded: true,
+          offline: true
+        };
+      } catch (err) {
+        return {
+          hint: getStaticHint(params.skill, params.level),
+          level: params.level,
+          guarded: true,
+          offline: true
+        };
+      }
+    }
+    classifyIntent(query) {
+      const q = query.toLowerCase().trim();
+      const generativeRegex = /\b(design (me|a|an|the)|create (a|an|me|the)|make (a|an|me|the|this)|generate (a|an|me|the)|build (a|an|me|the)|draw (a|an|me|the)|produce (a|an|me|the)|write (the|a|my)?\s*(css|html|code|copy)|give me (the|a)?\s*(html|css|code|layout)|rewrite (my|the)?\s*(text|copy)|replace my|fix it for me|do it for me|palette|exact hex|mockup|hero section|dashboard|login form|login page|checkout|button with)\b/i;
+      if (generativeRegex.test(q)) {
+        return "generate_design";
+      }
+      return "explain_concept";
+    }
+    async handleUserQuery(query, closestSkill = "contrast") {
+      const intent = this.classifyIntent(query);
+      if (intent === "generate_design") {
+        return {
+          response: getCannedRedirect(closestSkill),
+          intent: "generate_design",
+          offline: true
+        };
+      }
+      try {
+        const prompt = `The beginner asks this conceptual question about UI design: "${query}".
+Answer in at most 50 words explaining the core principle or rule. Do NOT produce designs, CSS, or color palettes.`;
+        const text = await this.client.generateText(prompt, SYSTEM_PROMPT);
+        const guard = guardHint(text, 2);
+        if (guard.ok) {
+          return { response: text, intent: "explain_concept", offline: false };
+        }
+      } catch (e) {
+      }
+      return {
+        response: `Good design relies on clear hierarchy and standard rules: WCAG contrast (4.5:1), consistent 8pt spacing, and semantic layer structure. Try one of our 2-minute lessons to practice.`,
+        intent: "explain_concept",
+        offline: true
+      };
+    }
+  };
+
   // src/ui/ui.ts
   var learnerState = null;
   var activeSkill = "contrast";
   var activeFrameId = null;
   var currentHintLevel = 0;
   var hintsUsedInSession = 0;
+  var coach = new SousArtistCoach();
   var tabButtons = document.querySelectorAll(".tab-btn");
   var tabContents = document.querySelectorAll(".tab-content");
   function switchTab(targetTab) {
@@ -635,12 +951,12 @@ button:focus-visible {
       });
     }
     if (btnHint) {
-      btnHint.addEventListener("click", () => {
+      btnHint.addEventListener("click", async () => {
         if (currentHintLevel < 4) {
           currentHintLevel += 1;
           hintsUsedInSession += 1;
         }
-        renderHintBox();
+        await renderHintBox();
       });
     }
   }
@@ -701,16 +1017,74 @@ button:focus-visible {
     }
     return `<strong>Level 4 (Worked Example):</strong> ${lesson.workedExample}`;
   }
-  function renderHintBox() {
+  async function renderHintBox() {
     const box = document.getElementById("hint-content-box");
     const btn = document.getElementById("btn-request-hint");
     const lesson = LESSONS[activeSkill];
-    if (box && lesson) {
-      box.innerHTML = getHintText(lesson, currentHintLevel);
+    if (!box || !lesson) return;
+    if (currentHintLevel === 0) {
+      box.innerHTML = getHintText(lesson, 0);
+      return;
+    }
+    if (currentHintLevel < 4) {
+      box.innerHTML = '<span style="color:var(--text-muted);">Generating graded coaching hint...</span>';
+      const hintRes = await coach.getGradedHint({
+        skill: activeSkill,
+        level: currentHintLevel,
+        measured: { ratio: 2.1 },
+        expected: { minRatio: 4.5 },
+        attempts: hintsUsedInSession
+      });
+      box.innerHTML = `<strong>Level ${currentHintLevel}:</strong> ${hintRes.hint} ${hintRes.offline ? '<span style="font-size:10px; color:var(--text-muted);">(offline hint)</span>' : ""}`;
+    } else {
+      box.innerHTML = `<strong>Level 4 (Worked Example):</strong> ${lesson.workedExample}`;
     }
     if (btn) {
-      btn.textContent = currentHintLevel === 0 ? "Need a hint?" : currentHintLevel < 4 ? "Next hint level" : "Worked example";
+      btn.textContent = currentHintLevel < 4 ? "Next hint level" : "Worked example";
     }
+  }
+  var coachInput = document.getElementById("coach-input");
+  var btnCoachSend = document.getElementById("btn-coach-send");
+  var coachChat = document.getElementById("coach-chat");
+  async function sendCoachMessage() {
+    if (!coachInput || !coachChat) return;
+    const text = coachInput.value.trim();
+    if (!text) return;
+    coachInput.value = "";
+    const userBubble = document.createElement("div");
+    userBubble.style.cssText = "background:var(--accent-color); color:#fff; padding:8px 12px; border-radius:12px 12px 2px 12px; max-width:85%; align-self:flex-end; font-size:12px; margin-left:auto;";
+    userBubble.textContent = text;
+    coachChat.appendChild(userBubble);
+    coachChat.scrollTop = coachChat.scrollHeight;
+    const typingBubble = document.createElement("div");
+    typingBubble.style.cssText = "background:var(--bg-secondary); border:1px solid var(--border-color); color:var(--text-secondary); padding:6px 10px; border-radius:12px 12px 12px 2px; max-width:85%; font-size:11px;";
+    typingBubble.textContent = "Coach is thinking...";
+    coachChat.appendChild(typingBubble);
+    coachChat.scrollTop = coachChat.scrollHeight;
+    const result = await coach.handleUserQuery(text, activeSkill);
+    coachChat.removeChild(typingBubble);
+    const coachBubble = document.createElement("div");
+    coachBubble.style.cssText = `background:var(--bg-card); border:1px solid ${result.intent === "generate_design" ? "var(--accent-color)" : "var(--border-color)"}; color:var(--text-primary); padding:10px 12px; border-radius:12px 12px 12px 2px; max-width:90%; font-size:12px; line-height:1.4;`;
+    if (result.intent === "generate_design") {
+      coachBubble.innerHTML = `
+      <div style="font-weight:700; color:var(--accent-color); font-size:11px; margin-bottom:4px; text-transform:uppercase;">Coaching Boundary</div>
+      <div>${result.response}</div>
+    `;
+    } else {
+      coachBubble.textContent = result.response;
+    }
+    coachChat.appendChild(coachBubble);
+    coachChat.scrollTop = coachChat.scrollHeight;
+  }
+  if (btnCoachSend) {
+    btnCoachSend.addEventListener("click", sendCoachMessage);
+  }
+  if (coachInput) {
+    coachInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        sendCoachMessage();
+      }
+    });
   }
   window.onmessage = (event) => {
     const msg = event.data.pluginMessage;
