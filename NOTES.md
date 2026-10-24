@@ -3,6 +3,7 @@
 ## Unverified
 - Zhang (2025), IEEE Access 13, pp. 143599-143626 (Dropped from verified citations per spec section 15).
 - Putri et al. (2025), IEEE Access 13, pp. 28135-28149 (Dropped from verified citations per spec section 15).
+- TODO(human): confirm journal details from the DOI page for de Waal et al. (journal volume/pages/DOI).
 
 ## Verified Figma APIs Used
 - `figma.showUI(__html__, { width: 380, height: 640 })`

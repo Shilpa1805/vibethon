@@ -46,7 +46,7 @@ src/
       leitner.ts               Spaced review (Boxes 0-4) + transfer drop on real-file gap
       xp.ts                    XP math (10 base, +5 no hint, +2 streak) & streak tracking
     llm/
-      client.ts                Resilient client: 8s timeout, jittered retry, SHA-256 cache
+      client.ts                Resilient client: 8s timeout, jittered retry, 32-bit payload hash cache
       prompts.ts               System prompt skeleton & prompt builders
       guard.ts                 Output guardrail (blocks code, HTML, hex, & generative phrases)
       fallback.ts              Offline skill ranker (high*3 + med*2 + low) & static hints
@@ -111,10 +111,10 @@ All creative/design generation requests safely deflected to canned redirects.
 Verified against official source publications:
 
 1. **Haase, J. and Pokutta, S.** *Human-AI Co-Creativity: Exploring Synergies Across Levels of Creative Collaboration*. arXiv:2411.12527 (2024).  
-   *What we take:* The four-level collaboration framework (Digital Pen, AI Task Specialist, AI Assistant, AI Co-Creator). SousArtist operates strictly as an AI Assistant coaching human agency.  
+   *What we take:* The four-level collaboration framework (Digital Pen, AI Task Specialist, AI Assistant, AI Co-Creator). SousArtist produces no creative output, so it stays below the paper's AI Co-Creator level.  
    *What we do not claim:* We do not claim generative AI inherently harms creative joy or human agency.
-2. **de Waal, A. et al.** *Therapeutic Approaches for the Prevention of Upper Limb Repetitive Strain Injuries in Work-Related Computer Use: A Scoping Review*. Journal of Occupational Rehabilitation 35(2):234-267 (2025). DOI: 10.1007/s10926-024-10204-z.  
-   *What we take:* 58 peer-reviewed studies on computer workstation ergonomic interventions.  
+2. **de Waal, A. et al.** *Therapeutic Approaches for the Prevention of Upper Limb Repetitive Strain Injuries in Work-Related Computer Use: A Scoping Review*.  
+   *What we take:* 58 peer-reviewed studies on computer workstation ergonomic interventions (confirmed on PubMed Central and PEDro).  
    *What we do not claim:* We do not claim keyboard shortcut coaching cures or reduces RSI; we measure no medical strain reduction.
 3. **Alimin, S. R. et al.** *Touch and Gesture-Based Interfaces in Creative Workflows: A Review*. Malaysian Journal of Information and Communication Technology 10(2), 2025.  
    *What we take:* Hybrid touch, stylus, and gesture inputs are expanding across modern creative tools.  
@@ -138,11 +138,12 @@ npm run build
 ```
 This compiles `src/code.ts` into `dist/code.js` and inlines HTML, CSS, and UI JavaScript into `dist/ui.html`.
 
-### 2. Run Tests
+### 2. Run Tests & Typecheck
 ```bash
 npm test
+npm run typecheck
 ```
-Runs 29 unit tests covering WCAG relative luminance, 8pt spacing grid math, layer naming regex, auto-layout detection, Leitner progression, and output guardrails.
+Runs 43 unit tests covering WCAG relative luminance, 8pt spacing grid math, layer naming regex, auto-layout detection, Leitner progression, prompt privacy anti-leak, and output guardrails.
 
 ### 3. Run Guardrail Evaluation
 ```bash
@@ -159,8 +160,42 @@ Executes the 16 adversarial prompt evaluation suite and validates 100% deflectio
 
 ---
 
-## 7. Limitations & Honest Disclosures
+## 7. Deploying the Proxy
 
-- **Solid Fills Only**: Contrast analysis evaluates solid text fills against solid ancestor fills. Gradients, images, and blend modes are skipped.
+The plugin includes a lightweight serverless proxy in `api/llm.ts` to keep API keys secure while communicating with Google Gemini.
+
+### Environment Variables
+- `SOUSARTIST_LLM_KEY`: Your Google Gemini API key (set on the proxy host, e.g. Vercel).
+- `GEMINI_MODEL`: Model identifier (default: `gemini-2.5-flash`, verified on ai.google.dev).
+
+### Build Variable
+- `SOUSARTIST_PROXY_URL`: Full URL of your deployed proxy endpoint (e.g. `https://your-app.vercel.app/api/llm`). Injected during `npm run build`. If left unset, SousArtist runs fully offline with deterministic fallbacks.
+
+### Deployment Steps (Vercel)
+1. Deploy `api/llm.ts` to Vercel (or any serverless host).
+2. In Project Settings -> Environment Variables, configure `SOUSARTIST_LLM_KEY` and optionally `GEMINI_MODEL`.
+3. Build the plugin with the proxy URL:
+   ```bash
+   SOUSARTIST_PROXY_URL="https://<your-project>.vercel.app/api/llm" npm run build
+   ```
+4. Re-import into Figma. Hints will show without the offline label.
+
+### Known Limits
+This is a hackathon proxy: CORS is open and rate limiting is per serverless instance (60 requests/minute per client IP).
+
+---
+
+## 8. Related Tools & Positioning
+
+Design Lint (open-source, MIT, by Destefanis) is the closest adjacent tool: it finds layers breaking style rules and flags them in context. Documentation plugins such as EightShapes Specs, Gist, FigMayo, and Design to Doc document a design for other people.
+
+SousArtist does something different:
+> *"Linters tell you what is wrong. SousArtist teaches you why, makes you fix it by hand, verifies the fix, and brings the skill back for review."*
+
+---
+
+## 9. Limitations & Honest Disclosures
+
+- **Solid Fills Only**: Contrast analysis evaluates solid text fills against solid ancestor fills. Gradients, images, and blend modes are skipped (see unsupported-items notice in the Audit tab).
 - **Learning Aid, Not Legal Audit**: SousArtist is an educational coach designed to build muscle memory; it is not a certified accessibility compliance audit.
 - **Figma Only**: Currently implemented for Figma; roadmap adapters for Krita or Penpot are exploratory.
