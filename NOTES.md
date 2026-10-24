@@ -18,5 +18,10 @@
 ## Token Economics & Metrics
 - Diagnosis payload: ~180 tokens (compact JSON with skill counts + 3 measured/expected samples).
 - Graded hint payload: ~120 tokens (system instructions + prompt skeleton + single skill context).
-- Caching: SHA-256 hash on input payload eliminates repeat calls on identical measurements.
+- Caching: 32-bit hash on input payload eliminates repeat calls on identical measurements.
 - Offline mode: zero tokens, deterministic fallback.
+
+## Verified Models & Provider Configuration
+- Model chosen: `gemini-2.5-flash` (default, configurable via `GEMINI_MODEL` environment variable on proxy host).
+- Verified page: `https://ai.google.dev/gemini-api/docs/models` (Verified: 2026-10-25).
+- REST field for system instructions: `systemInstruction` with `parts: [{ text: ... }]` (verified via `https://ai.google.dev/gemini-api/docs/system-instructions`).
