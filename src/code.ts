@@ -218,6 +218,62 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: any }) => {
         if (node && 'type' in node && node.type !== 'DOCUMENT' && node.type !== 'PAGE') {
           figma.currentPage.selection = [node as SceneNode];
           figma.viewport.scrollAndZoomIntoView([node as SceneNode]);
+          const mode = (node as any).layoutMode || 'NONE';
+          const ch = (node as any).children;
+          const count = ch && Array.isArray(ch) ? ch.length : 0;
+          figma.notify(`Selected "${node.name}" (Auto Layout: ${mode}, Children: ${count})`, { timeout: 3000 });
+        } else {
+          figma.notify(`Could not find layer on canvas.`);
+        }
+      }
+      break;
+    }
+
+    case 'RECHECK_NODE': {
+      if (typeof msg.nodeId === 'string') {
+        const node = await figma.getNodeByIdAsync(msg.nodeId);
+        if (!node) {
+          figma.ui.postMessage({
+            type: 'NODE_RECHECK_RESULT',
+            nodeId: msg.nodeId,
+            passed: true,
+            message: 'Layer was deleted or resolved.',
+          });
+          break;
+        }
+
+        const sceneNode = node as SceneNode;
+        const rawMode = (sceneNode as any).layoutMode;
+        const isAutoLayout = rawMode === 'HORIZONTAL' || rawMode === 'VERTICAL' || rawMode === 'GRID';
+        const ch = (sceneNode as any).children;
+        const childCount = ch && Array.isArray(ch) ? ch.length : 0;
+        const spacing = (sceneNode as any).itemSpacing;
+
+        if (isAutoLayout || childCount < 2) {
+          figma.notify(`✓ "${sceneNode.name}" verified! Auto Layout is active (${rawMode}).`);
+          figma.ui.postMessage({
+            type: 'NODE_RECHECK_RESULT',
+            nodeId: sceneNode.id,
+            nodeName: sceneNode.name,
+            passed: true,
+            layoutMode: rawMode || 'VERTICAL',
+            childCount,
+            spacing: typeof spacing === 'number' ? spacing : undefined,
+            message: `"${sceneNode.name}" is now using Auto Layout (${rawMode || 'VERTICAL'}${typeof spacing === 'number' ? `, ${spacing}px gap` : ''})!`,
+          });
+        } else {
+          figma.currentPage.selection = [sceneNode];
+          figma.viewport.scrollAndZoomIntoView([sceneNode]);
+          figma.notify(`"${sceneNode.name}" selected: Auto Layout is still OFF. Press Shift+A!`, { timeout: 4000 });
+          figma.ui.postMessage({
+            type: 'NODE_RECHECK_RESULT',
+            nodeId: sceneNode.id,
+            nodeName: sceneNode.name,
+            passed: false,
+            layoutMode: 'NONE',
+            childCount,
+            message: `"${sceneNode.name}" has ${childCount} children and is still using manual positioning (Shift+A).`,
+          });
         }
       }
       break;

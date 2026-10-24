@@ -261,14 +261,9 @@ function renderAuditResults(audit: AuditSummary, pageName: string) {
       e.stopPropagation();
       const nodeId = btn.getAttribute('data-node-id');
       if (nodeId) {
-        parent.postMessage({ pluginMessage: { type: 'SELECT_NODE', nodeId } }, '*');
+        btn.textContent = '⏳ Checking...';
+        parent.postMessage({ pluginMessage: { type: 'RECHECK_NODE', nodeId } }, '*');
       }
-      if (btnRunAudit) {
-        btnRunAudit.click();
-      } else {
-        parent.postMessage({ pluginMessage: { type: 'RUN_AUDIT', scope: currentAuditScope } }, '*');
-      }
-      showToast('Re-scanning for updates...');
     });
   });
 }
@@ -660,6 +655,31 @@ window.onmessage = (event) => {
 
     case 'AUDIT_RESULTS': {
       renderAuditResults(msg.audit, msg.pageName);
+      break;
+    }
+
+    case 'NODE_RECHECK_RESULT': {
+      const card = document.getElementById(`card-autolayout-${msg.nodeId}`) || document.getElementById(`card-${msg.nodeId}`);
+      if (card && msg.passed) {
+        card.style.borderColor = 'var(--success-color)';
+        card.style.background = 'rgba(16, 185, 129, 0.08)';
+        card.innerHTML = `
+          <div style="padding:12px; display:flex; flex-direction:column; gap:4px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <strong style="color:var(--success-color); font-size:12px;">✓ Auto Layout Verified & Active!</strong>
+              <span style="font-size:11px; font-weight:700; color:var(--success-color);">+10 XP</span>
+            </div>
+            <div style="font-size:11px; color:var(--text-secondary); margin-top:2px;">
+              ${msg.message}
+            </div>
+          </div>
+        `;
+        showToast(`✓ "${msg.nodeName}" verified! Auto Layout is active.`);
+      } else if (card && !msg.passed) {
+        const recheckBtn = card.querySelector('.btn-recheck-finding') as HTMLButtonElement | null;
+        if (recheckBtn) recheckBtn.textContent = '↻ Re-check';
+        showToast(msg.message);
+      }
       break;
     }
 
