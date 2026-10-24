@@ -1,7 +1,7 @@
 // SousArtist - Contrast Analyzer (WCAG 2.1)
 // Deterministic rule engine - Pure TypeScript
 
-import { DesignFacts, FactNode, Finding, RGB } from '../types';
+import { DesignFacts, FactNode, Finding, RGB, StandardsProfile, UnsupportedItem } from '../types';
 
 export function linearizeChannel(c: number): number {
   return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
@@ -39,7 +39,7 @@ export function rgbToHex(rgb: RGB): string {
   return `#${r}${g}${b}`.toUpperCase();
 }
 
-export function analyzeContrast(facts: DesignFacts): Finding[] {
+export function analyzeContrast(facts: DesignFacts, profile?: StandardsProfile): Finding[] {
   const findings: Finding[] = [];
   const nodeMap = new Map<string, FactNode>();
   for (const node of facts.nodes) {
@@ -59,6 +59,10 @@ export function analyzeContrast(facts: DesignFacts): Finding[] {
     return { r: 1, g: 1, b: 1 };
   }
 
+  const minNormal = profile?.contrast?.minNormalRatio ?? 4.5;
+  const minLarge = profile?.contrast?.minLargeRatio ?? 3.0;
+  const standardName = profile?.contrast?.standard ?? 'AA';
+
   for (const node of facts.nodes) {
     if (node.type !== 'TEXT' || !node.textColor) continue;
 
@@ -66,7 +70,7 @@ export function analyzeContrast(facts: DesignFacts): Finding[] {
     const ratio = getContrastRatio(node.textColor, bg);
     const isLarge = (node.fontSize !== null && node.fontSize >= 24) ||
                     (node.fontSize !== null && node.fontSize >= 18.66 && node.fontBold === true);
-    const threshold = isLarge ? 3.0 : 4.5;
+    const threshold = isLarge ? minLarge : minNormal;
 
     if (ratio < threshold) {
       const fontSizeStr = node.fontSize ? `${node.fontSize}px` : 'text';
@@ -75,7 +79,7 @@ export function analyzeContrast(facts: DesignFacts): Finding[] {
       findings.push({
         id: `contrast-${node.id}`,
         skill: 'contrast',
-        severity: ratio < 3.0 ? 'high' : 'medium',
+        severity: ratio < (isLarge ? 2.5 : 3.0) ? 'high' : 'medium',
         nodeId: node.id,
         nodeName: node.name || 'Text Layer',
         nodeType: 'TEXT',
@@ -86,12 +90,14 @@ export function analyzeContrast(facts: DesignFacts): Finding[] {
         },
         expected: {
           minRatio: threshold,
-          targetLevel: isLarge ? 'WCAG Large Text (3.0:1)' : 'WCAG Normal Text (4.5:1)',
+          targetLevel: `WCAG ${standardName} (${threshold}:1)`,
         },
-        summary: `Text "${node.name}" (${fontSizeStr}) has ${ratio.toFixed(1)}:1 contrast against its background. WCAG AA requires at least ${threshold}:1 for ${styleStr}.`,
-        whyItMatters: 'Fails WCAG AA accessibility standards. Low contrast causes text to wash out under glare or dim lighting, and makes reading difficult for people with vision impairments or color blindness.',
+        profileContext: profile ? `${profile.name} (WCAG ${standardName})` : undefined,
+        summary: `Text "${node.name}" (${fontSizeStr}) has ${ratio.toFixed(1)}:1 contrast against its background. Standard requires at least ${threshold}:1 for ${styleStr}.`,
+        whyItMatters: `Fails WCAG ${standardName} accessibility standards. Low contrast causes text to wash out under glare or dim lighting, and makes reading difficult for people with vision impairments or color blindness.`,
+        tradeoffTip: 'If low contrast was intentionally chosen for disabled state or watermarks, mark it as Dismiss (Intentional).',
         actionSteps: [
-          `Click "Locate" to select "${node.name}" in your Figma canvas.`,
+          `Click "Show in File" to select "${node.name}" in your Figma canvas.`,
           `In Figma's right-hand panel, go to the "Fill" section.`,
           `Adjust the text color or container background to increase the luminance difference until contrast reaches at least ${threshold}:1.`,
           `Re-run audit to verify the fix passes!`,
@@ -102,4 +108,19 @@ export function analyzeContrast(facts: DesignFacts): Finding[] {
   }
 
   return findings;
+}
+
+export function detectUnsupportedCases(facts: DesignFacts): UnsupportedItem[] {
+  const unsupported: UnsupportedItem[] = [];
+  for (const node of facts.nodes) {
+    if (node.type === 'TEXT' && (node.hasUnsupportedFill || !node.textColor)) {
+      unsupported.push({
+        nodeId: node.id,
+        nodeName: node.name || 'Text',
+        skill: 'contrast',
+        reason: 'Layer has image or gradient fill; deterministic offline contrast measurement is skipped.',
+      });
+    }
+  }
+  return unsupported;
 }

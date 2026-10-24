@@ -1,7 +1,7 @@
 // SousArtist - UI Controller
 // Move, Measure, Manage - Never Make design for the user
 
-import { AuditSummary, Finding, LearnerState, SkillId } from '../core/types';
+import { AuditSummary, Finding, LearnerState, SkillId, ExceptionReason } from '../core/types';
 import { LESSONS, LessonDefinition } from '../core/lessons/lessons';
 import { SousArtistCoach } from '../core/llm/coach';
 
@@ -10,6 +10,7 @@ let activeSkill: SkillId = 'contrast';
 let activeFrameId: string | null = null;
 let currentHintLevel = 0;
 let hintsUsedInSession = 0;
+let pendingPracticeContext: { skill: SkillId; nodeName?: string } | null = null;
 const coach = new SousArtistCoach();
 
 // Tab Switching
@@ -25,6 +26,147 @@ export function switchTab(targetTab: string) {
   tabContents.forEach((c) => {
     c.classList.toggle('active', c.id === `tab-${targetTab}`);
   });
+}
+
+// ── Expertise Dropdown ──────────────────────────────────────────────────────
+const btnExpertiseToggle = document.getElementById('btn-expertise-toggle');
+const expertiseMenu = document.getElementById('expertise-menu');
+const expertiseLabel = document.getElementById('expertise-label');
+const expertiseIcon = document.getElementById('expertise-icon');
+
+const EXPERTISE_META: Record<string, { icon: string; label: string }> = {
+  beginner:     { icon: '🌱', label: 'Beginner' },
+  intermediate: { icon: '⚡', label: 'Intermediate' },
+  expert:       { icon: '👑', label: 'Expert' },
+};
+
+if (btnExpertiseToggle && expertiseMenu) {
+  btnExpertiseToggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isOpen = expertiseMenu.style.display !== 'none';
+    closeAllDropdowns();
+    if (!isOpen) expertiseMenu.style.display = 'flex';
+  });
+
+  expertiseMenu.querySelectorAll('.menu-item').forEach((item) => {
+    item.addEventListener('click', () => {
+      const level = item.getAttribute('data-level');
+      if (!level) return;
+      // Update active visual
+      expertiseMenu.querySelectorAll('.menu-item').forEach((i) => i.classList.remove('active'));
+      item.classList.add('active');
+      // Update pill label
+      const meta = EXPERTISE_META[level] || EXPERTISE_META.intermediate;
+      if (expertiseLabel) expertiseLabel.textContent = meta.label;
+      if (expertiseIcon) expertiseIcon.textContent = meta.icon;
+      closeAllDropdowns();
+      parent.postMessage({ pluginMessage: { type: 'SET_EXPERTISE', expertise: level } }, '*');
+    });
+  });
+}
+
+// ── Onboarding Experience Modal ─────────────────────────────────────────────
+const onboardingOverlay = document.getElementById('onboarding-overlay');
+document.querySelectorAll<HTMLButtonElement>('.onboarding-choice').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const level = btn.getAttribute('data-level');
+    if (!level) return;
+    if (onboardingOverlay) onboardingOverlay.style.display = 'none';
+    parent.postMessage({ pluginMessage: { type: 'COMPLETE_ONBOARDING', expertise: level } }, '*');
+    if (learnerState) {
+      learnerState.expertiseLevel = level as any;
+      learnerState.onboardingComplete = true;
+      syncToolbarFromState(learnerState);
+      renderPathTab();
+    }
+  });
+});
+
+// ── Standards Profile Dropdown ───────────────────────────────────────────────
+const btnProfileToggle = document.getElementById('btn-profile-toggle');
+const profileMenu = document.getElementById('profile-menu');
+const profileLabel = document.getElementById('profile-label');
+
+if (btnProfileToggle && profileMenu) {
+  btnProfileToggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isOpen = profileMenu.style.display !== 'none';
+    closeAllDropdowns();
+    if (!isOpen) profileMenu.style.display = 'flex';
+  });
+}
+
+function renderProfileMenu() {
+  const container = document.getElementById('profile-menu-items');
+  if (!container || !learnerState) return;
+
+  container.innerHTML = learnerState.profiles.map((p) => {
+    const isActive = p.id === learnerState!.activeProfileId;
+    const contextIcon = p.context === 'team' ? '👥' : p.context === 'freelance' ? '💼' : '🧪';
+    return `
+      <div class="menu-item ${isActive ? 'active' : ''}" data-profile-id="${p.id}" title="${p.description}">
+        <strong>${contextIcon} ${p.name}</strong>
+        <small>${p.description}</small>
+      </div>
+    `;
+  }).join('');
+
+  container.querySelectorAll('.menu-item').forEach((item) => {
+    item.addEventListener('click', () => {
+      const profileId = item.getAttribute('data-profile-id');
+      if (!profileId) return;
+      closeAllDropdowns();
+      parent.postMessage({ pluginMessage: { type: 'SET_ACTIVE_PROFILE', profileId } }, '*');
+    });
+  });
+}
+
+// ── Close All Dropdowns ──────────────────────────────────────────────────────
+function closeAllDropdowns() {
+  if (expertiseMenu) expertiseMenu.style.display = 'none';
+  if (profileMenu) profileMenu.style.display = 'none';
+}
+
+document.addEventListener('click', closeAllDropdowns);
+
+// ── Sync Toolbar from Learner State ─────────────────────────────────────────
+function syncToolbarFromState(state: LearnerState) {
+  // Expertise pill
+  const meta = EXPERTISE_META[state.expertiseLevel] || EXPERTISE_META.intermediate;
+  if (expertiseLabel) expertiseLabel.textContent = meta.label;
+  if (expertiseIcon) expertiseIcon.textContent = meta.icon;
+  if (expertiseMenu) {
+    expertiseMenu.querySelectorAll('.menu-item').forEach((item) => {
+      item.classList.toggle('active', item.getAttribute('data-level') === state.expertiseLevel);
+    });
+  }
+
+  // Profile pill
+  const activeProfile = state.profiles?.find((p) => p.id === state.activeProfileId);
+  if (profileLabel && activeProfile) profileLabel.textContent = activeProfile.name;
+
+  // Re-render profile dropdown items
+  renderProfileMenu();
+
+  // Audit tab banner
+  const bannerName = document.getElementById('banner-profile-name');
+  const bannerRules = document.getElementById('banner-profile-rules');
+  const bannerExemptions = document.getElementById('banner-exemptions-badge');
+  if (activeProfile) {
+    if (bannerName) bannerName.textContent = activeProfile.name;
+    if (bannerRules) {
+      const rules = [
+        `${activeProfile.spacing.baseGrid}pt grid`,
+        `WCAG ${activeProfile.contrast.standard}`,
+        activeProfile.naming.pattern === 'slash-hierarchy' ? 'Slash naming'
+          : activeProfile.naming.pattern === 'pascal-case' ? 'PascalCase'
+          : 'Clean naming',
+      ].join(' · ');
+      bannerRules.textContent = rules;
+    }
+    const exemptCount = activeProfile.exemptions?.length || 0;
+    if (bannerExemptions) bannerExemptions.textContent = `${exemptCount} exemption${exemptCount !== 1 ? 's' : ''}`;
+  }
 }
 
 tabButtons.forEach((btn) => {
@@ -109,6 +251,57 @@ function renderAuditResults(audit: AuditSummary, pageName: string) {
     `;
   }
 
+  // Re-audit Delta Tracking (Step 6 of workflow specification)
+  const deltaContainer = document.getElementById('reaudit-delta');
+  if (deltaContainer) {
+    const history = learnerState?.auditHistory || [];
+    const lastEntry = history.length > 0 ? history[history.length - 1] : null;
+
+    if (lastEntry && typeof lastEntry.totalGaps === 'number' && lastEntry.totalGaps > audit.totalCount) {
+      const resolvedCount = lastEntry.totalGaps - audit.totalCount;
+      deltaContainer.style.display = 'block';
+      deltaContainer.innerHTML = `
+        <div class="card" style="background:rgba(16,185,129,0.12); border-color:var(--success-color); padding:10px 14px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="font-weight:700; color:var(--success-color); font-size:13px; display:flex; align-items:center; gap:6px;">
+              <span>🎉</span>
+              <span>${lastEntry.totalGaps} → ${audit.totalCount} Issues Resolved!</span>
+            </div>
+            <div style="font-size:11px; color:var(--text-secondary); margin-top:2px;">
+              You fixed ${resolvedCount} design gap${resolvedCount !== 1 ? 's' : ''} by hand in Figma.
+            </div>
+          </div>
+          <span style="font-size:12px; font-weight:700; color:var(--success-color); background:rgba(16,185,129,0.2); padding:3px 8px; border-radius:12px;">
+            +${resolvedCount * 10} XP
+          </span>
+        </div>
+      `;
+      // Increment independent resolutions count for expert mastery evidence
+      parent.postMessage({ pluginMessage: { type: 'INCREMENT_INDEPENDENT_RESOLUTIONS' } }, '*');
+    } else {
+      deltaContainer.style.display = 'none';
+      deltaContainer.innerHTML = '';
+    }
+  }
+
+  // Record audit history snapshot
+  parent.postMessage({
+    pluginMessage: {
+      type: 'RECORD_AUDIT_HISTORY',
+      entry: {
+        timestamp: Date.now(),
+        pageName,
+        totalGaps: audit.totalCount,
+        bySkill: {
+          contrast: audit.bySkill.contrast?.count || 0,
+          'spacing-grid': audit.bySkill['spacing-grid']?.count || 0,
+          'layer-naming': audit.bySkill['layer-naming']?.count || 0,
+          'auto-layout': audit.bySkill['auto-layout']?.count || 0,
+        },
+      },
+    },
+  }, '*');
+
   if (!auditResults) return;
 
   if (audit.totalCount === 0) {
@@ -185,7 +378,7 @@ function renderAuditResults(audit: AuditSummary, pageName: string) {
   // Wire finding header accordion toggles
   auditResults.querySelectorAll('.finding-header').forEach((hdr) => {
     hdr.addEventListener('click', (e) => {
-      // Don't toggle if the user clicked the Locate button directly
+      // Don't toggle if the user clicked the Show in File button directly
       if ((e.target as HTMLElement).closest('.btn-inspect')) return;
       const id = hdr.getAttribute('data-id');
       const details = document.getElementById(`details-${id}`);
@@ -213,38 +406,85 @@ function renderAuditResults(audit: AuditSummary, pageName: string) {
     });
   });
 
-  // Wire "Practice in Sandbox" button
+  // Wire "Practice in Sandbox" button with contextual link
   auditResults.querySelectorAll('.btn-study-sandbox').forEach((btn) => {
     btn.addEventListener('click', () => {
       const skill = btn.getAttribute('data-skill') as SkillId;
+      const nodeName = btn.getAttribute('data-node-name') || undefined;
       if (skill) {
         activeSkill = skill;
+        pendingPracticeContext = { skill, nodeName };
         switchTab('path');
         renderPathTab();
       }
     });
   });
 
-  // Wire Dismiss buttons
-  auditResults.querySelectorAll('.btn-dismiss-finding').forEach((btn) => {
+  // Wire Exception form toggle
+  auditResults.querySelectorAll('.btn-open-exception').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const id = btn.getAttribute('data-id');
-      const card = document.getElementById(`card-${id}`);
-      if (card) {
-        card.style.opacity = '0.5';
-        card.innerHTML = `
-          <div style="padding:8px 12px; font-size:11px; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center;">
-            <span>✓ Marked as intentional design choice</span>
-            <span style="font-size:10px; color:var(--text-dim);">(Will not flag)</span>
-          </div>
-        `;
-        showToast('Marked as intentional.');
+      const box = document.getElementById(`exception-box-${id}`);
+      if (box) {
+        box.style.display = box.style.display === 'none' ? 'block' : 'none';
       }
     });
   });
 
-  // Wire Locate buttons
+  // Wire Cancel Exception
+  auditResults.querySelectorAll('.btn-cancel-exception').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.getAttribute('data-id');
+      const box = document.getElementById(`exception-box-${id}`);
+      if (box) box.style.display = 'none';
+    });
+  });
+
+  // Wire Confirm Exception (Intentional / Not Applicable / Remind Later)
+  auditResults.querySelectorAll('.btn-confirm-exception').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.getAttribute('data-id');
+      const nodeId = btn.getAttribute('data-node-id');
+      if (!id) return;
+
+      const checkedRadio = document.querySelector<HTMLInputElement>(`input[name="reason-${id}"]:checked`);
+      const reason = (checkedRadio?.value || 'intentional') as ExceptionReason;
+      const noteInput = document.getElementById(`exception-note-${id}`) as HTMLInputElement | null;
+      const customNote = noteInput?.value?.trim() || undefined;
+
+      parent.postMessage({
+        pluginMessage: {
+          type: 'DISMISS_WITH_REASON',
+          findingId: id,
+          reason,
+          customNote,
+          nodeId,
+        },
+      }, '*');
+
+      const card = document.getElementById(`card-${id}`);
+      if (card) {
+        card.style.opacity = '0.6';
+        const reasonLabels: Record<string, string> = {
+          'intentional': 'Intentional design choice',
+          'not-applicable': 'Not applicable to context',
+          'remind-later': 'Deferred to backlog',
+        };
+        card.innerHTML = `
+          <div style="padding:10px 14px; font-size:11px; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center;">
+            <span>✓ Exception recorded: <strong>${reasonLabels[reason]}</strong>${customNote ? ` ("${customNote}")` : ''}</span>
+            <span style="font-size:10px; color:var(--text-dim);">(Exempt from audit)</span>
+          </div>
+        `;
+      }
+      showToast(`Exception recorded: ${reason}`);
+    });
+  });
+
+  // Wire Show in File buttons
   auditResults.querySelectorAll('.btn-inspect').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -275,7 +515,7 @@ function renderFindingItem(f: Finding): string {
     measuredStr = `Contrast Ratio: ${f.measured.ratio}:1 (needs ${f.expected.minRatio}:1)`;
     layerIcon = '🔤';
   } else if (f.skill === 'spacing-grid') {
-    measuredStr = `${f.measured.property}: ${f.measured.value}px (use multiple of 4, e.g. ${f.expected.recommended8pt}px)`;
+    measuredStr = `${f.measured.property}: ${f.measured.value}px (use multiple of 4/8, e.g. ${f.expected.recommended8pt}px)`;
     layerIcon = '📐';
   } else if (f.skill === 'layer-naming') {
     measuredStr = `Name: "${f.measured.currentName}"`;
@@ -286,8 +526,131 @@ function renderFindingItem(f: Finding): string {
   }
 
   const severityColor = f.severity === 'high' ? 'var(--danger-color)' : f.severity === 'medium' ? 'var(--warning-color)' : 'var(--text-secondary)';
-  const severityLabel = f.severity.toUpperCase();
   const nodeTitle = f.nodeName ? `"${f.nodeName}"` : 'Selected Layer';
+  const expertise = learnerState?.expertiseLevel || 'intermediate';
+
+  // Skill-level trade-off explanation
+  const skillTradeoffs: Record<SkillId, string> = {
+    'contrast': 'Higher contrast improves outdoor and low-vision accessibility, but pure black on pure white (#000 on #FFF) can cause halation. Use dark charcoal (#1F2937) to meet AA comfortably.',
+    'spacing-grid': '8pt grids guarantee clean integer rendering across 1x/2x/3x screen densities. 4pt increments provide essential density for compact components like badges or tables.',
+    'layer-naming': 'Semantic naming takes seconds now but saves hours in engineering handoff, token synchronization, and multi-designer file clarity.',
+    'auto-layout': 'Auto Layout guarantees multi-device responsive wrapping and padding. Fixed frames should be reserved solely for freeform illustrations or non-responsive icons.',
+  };
+  const tradeoffText = f.tradeoffTip || skillTradeoffs[f.skill] || '';
+
+  // Render body based on expertise level
+  let detailsBody = '';
+
+  if (expertise === 'expert') {
+    // EXPERT: High-density compact view!
+    detailsBody = `
+      <div style="margin-top:8px; display:flex; flex-direction:column; gap:6px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-primary); padding:6px 10px; border-radius:4px; border:1px solid var(--border-color); font-size:11px;">
+          <div><strong style="color:var(--text-secondary);">Measured:</strong> <span style="color:var(--text-primary); font-family:monospace;">${JSON.stringify(f.measured).replace(/[{}"]/g, '')}</span></div>
+          <div><strong style="color:var(--text-secondary);">Expected:</strong> <span style="color:var(--accent-color); font-family:monospace;">${JSON.stringify(f.expected).replace(/[{}"]/g, '')}</span></div>
+        </div>
+
+        ${tradeoffText ? `
+          <div style="font-size:11px; color:var(--text-muted); line-height:1.4; padding:2px 4px;">
+            ⚖️ <strong style="color:var(--text-secondary);">Trade-off:</strong> ${tradeoffText}
+          </div>
+        ` : ''}
+
+        ${f.shortcutTip ? `
+          <div style="font-size:10px; color:var(--text-muted); padding:2px 4px;">
+            ⚡ <strong>Shortcut:</strong> ${f.shortcutTip}
+          </div>
+        ` : ''}
+      </div>
+    `;
+  } else if (expertise === 'intermediate') {
+    // INTERMEDIATE: Balanced view with diagnostic + fix steps + tradeoff
+    detailsBody = `
+      <div style="margin-top:8px; display:flex; flex-direction:column; gap:8px;">
+        <div>
+          <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin-bottom:2px;">
+            🔍 Diagnostic
+          </div>
+          <div style="color:var(--text-primary); font-size:12px; line-height:1.4;">
+            ${f.summary || measuredStr}
+          </div>
+        </div>
+
+        ${f.actionSteps && f.actionSteps.length > 0 ? `
+          <div style="background:var(--bg-primary); padding:8px 10px; border-radius:6px; border:1px solid var(--border-color);">
+            <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--accent-color); margin-bottom:4px;">
+              🛠️ Action Steps
+            </div>
+            <ol style="padding-left:18px; margin:0; font-size:11px; line-height:1.5; color:var(--text-primary);">
+              ${f.actionSteps.slice(0, 3).map(step => `<li>${step}</li>`).join('')}
+            </ol>
+          </div>
+        ` : ''}
+
+        ${tradeoffText ? `
+          <div style="font-size:11px; color:var(--text-muted); line-height:1.4;">
+            ⚖️ <strong>Trade-off:</strong> ${tradeoffText}
+          </div>
+        ` : ''}
+
+        ${f.shortcutTip ? `
+          <div style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
+            <span>⚡</span>
+            <span><strong>Shortcut:</strong> ${f.shortcutTip}</span>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  } else {
+    // BEGINNER: Full educational scaffolding
+    detailsBody = `
+      <div style="margin-top:8px; display:flex; flex-direction:column; gap:8px;">
+        <div>
+          <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin-bottom:2px;">
+            🔍 Component Diagnostic
+          </div>
+          <div style="color:var(--text-primary); font-size:12px; line-height:1.4;">
+            ${f.summary || measuredStr}
+          </div>
+        </div>
+
+        ${f.whyItMatters ? `
+          <div>
+            <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin-bottom:2px;">
+              💡 Why It Matters for This Component
+            </div>
+            <div style="color:var(--text-muted); font-size:11px; line-height:1.4;">
+              ${f.whyItMatters}
+            </div>
+          </div>
+        ` : ''}
+
+        ${f.actionSteps && f.actionSteps.length > 0 ? `
+          <div style="background:var(--bg-primary); padding:8px 10px; border-radius:6px; border:1px solid var(--border-color);">
+            <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--success-color); margin-bottom:4px;">
+              🛠️ Guided Fix Steps (Do in Figma)
+            </div>
+            <ol style="padding-left:18px; margin:0; font-size:11px; line-height:1.5; color:var(--text-primary);">
+              ${f.actionSteps.map(step => `<li>${step}</li>`).join('')}
+            </ol>
+          </div>
+        ` : ''}
+
+        ${tradeoffText ? `
+          <div style="font-size:11px; color:var(--text-muted); line-height:1.4;">
+            ⚖️ <strong>Design Trade-off:</strong> ${tradeoffText}
+          </div>
+        ` : ''}
+
+        ${f.shortcutTip ? `
+          <div style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
+            <span>⚡</span>
+            <span><strong>Shortcut:</strong> ${f.shortcutTip}</span>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
 
   return `
     <div class="finding-card" id="card-${f.id}" style="background:var(--bg-primary); border:1px solid var(--border-color); border-radius:6px; overflow:hidden; font-size:12px; transition:border-color 0.2s ease;">
@@ -302,9 +665,9 @@ function renderFindingItem(f: Finding): string {
           </div>
         </div>
 
-        <div style="display:flex; align-items:center; gap:8px; flex-shrink:0; margin-left:8px;">
+        <div style="display:flex; align-items:center; gap:6px; flex-shrink:0; margin-left:8px;">
           <button class="btn-inspect" data-node-id="${f.nodeId}" style="background:var(--bg-hover); border:1px solid var(--border-color); color:var(--accent-color); padding:3px 8px; border-radius:4px; cursor:pointer; font-size:11px; font-weight:600;" title="Highlight this layer in Figma">
-            Locate
+            🎯 Show in File
           </button>
           <span class="finding-toggle-arrow" id="arrow-${f.id}" style="font-size:10px; color:var(--text-muted); width:14px; text-align:center;">▼</span>
         </div>
@@ -312,62 +675,48 @@ function renderFindingItem(f: Finding): string {
 
       <!-- Expandable Component Betterment Body -->
       <div class="finding-details" id="details-${f.id}" style="padding:0 12px 12px; border-top:1px solid var(--border-color); background:var(--bg-card); display:flex; flex-direction:column; gap:8px;">
-        <!-- Diagnostic Summary -->
-        <div style="margin-top:8px;">
-          <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin-bottom:2px;">
-            🔍 Component Diagnostic
-          </div>
-          <div style="color:var(--text-primary); font-size:12px; line-height:1.4;">
-            ${f.summary || measuredStr}
-          </div>
-        </div>
-
-        <!-- Why It Matters -->
-        ${f.whyItMatters ? `
-          <div>
-            <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin-bottom:2px;">
-              💡 Why It Matters for This Component
-            </div>
-            <div style="color:var(--text-muted); font-size:11px; line-height:1.4;">
-              ${f.whyItMatters}
-            </div>
-          </div>
-        ` : ''}
-
-        <!-- How To Fix Step-by-Step -->
-        ${f.actionSteps && f.actionSteps.length > 0 ? `
-          <div style="background:var(--bg-primary); padding:8px 10px; border-radius:6px; border:1px solid var(--border-color);">
-            <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--success-color); margin-bottom:4px;">
-              🛠️ Guided Fix Steps (Do in Figma)
-            </div>
-            <ol style="padding-left:18px; margin:0; font-size:11px; line-height:1.5; color:var(--text-primary);">
-              ${f.actionSteps.map(step => `<li>${step}</li>`).join('')}
-            </ol>
-          </div>
-        ` : ''}
-
-        <!-- Shortcut Tip -->
-        ${f.shortcutTip ? `
-          <div style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
-            <span>⚡</span>
-            <span><strong>Shortcut:</strong> ${f.shortcutTip}</span>
-          </div>
-        ` : ''}
+        ${detailsBody}
 
         <!-- Direct Actions -->
-        <div style="display:flex; gap:6px; margin-top:4px; padding-top:6px; border-top:1px solid var(--border-color); flex-wrap:wrap;">
-          <button class="btn-recheck-finding btn-primary" data-node-id="${f.nodeId}" data-id="${f.id}" style="padding:5px 10px; font-size:11px; font-weight:600;" title="Re-check this component right now">
+        <div style="display:flex; gap:6px; margin-top:4px; padding-top:6px; border-top:1px solid var(--border-color); flex-wrap:wrap; align-items:center;">
+          <button class="btn-recheck-finding btn-primary" data-node-id="${f.nodeId}" data-id="${f.id}" style="padding:4px 8px; font-size:11px; font-weight:600;" title="Re-check this component right now">
             ↻ Re-check
           </button>
-          <button class="btn-ask-about-finding btn-secondary" data-node-name="${f.nodeName || 'layer'}" data-skill="${f.skill}" data-summary="${f.summary || measuredStr}" style="flex:1; min-width:130px; padding:5px 8px; font-size:11px;">
-            💬 Ask Coach About This
+          ${expertise === 'beginner' ? `
+            <button class="btn-ask-about-finding btn-secondary" data-node-name="${f.nodeName || 'layer'}" data-skill="${f.skill}" data-summary="${f.summary || measuredStr}" style="padding:4px 8px; font-size:11px;">
+              💬 Ask Coach
+            </button>
+          ` : ''}
+          <button class="btn-open-exception btn-secondary" data-id="${f.id}" style="padding:4px 8px; font-size:11px;" title="Record intentional exception or defer">
+            ✓ Exception
           </button>
-          <button class="btn-dismiss-finding btn-secondary" data-id="${f.id}" style="padding:5px 8px; font-size:11px;" title="Mark this as intentional design choice">
-            ✓ Dismiss (Intentional)
+          <button class="btn-study-sandbox btn-secondary" data-skill="${f.skill}" data-node-name="${f.nodeName || ''}" style="padding:4px 8px; font-size:11px;" title="Open isolated 2-minute practice lesson">
+            📚 Practice
           </button>
-          <button class="btn-study-sandbox btn-secondary" data-skill="${f.skill}" style="padding:5px 8px; font-size:11px;" title="Open isolated 2-minute practice lesson">
-            📚 Sandbox
-          </button>
+        </div>
+
+        <!-- Inline Exception Selector (Hidden until clicked) -->
+        <div class="exception-box" id="exception-box-${f.id}" style="display:none; background:var(--bg-primary); border:1px solid var(--border-color); border-radius:6px; padding:10px; margin-top:4px;">
+          <div style="font-size:11px; font-weight:700; color:var(--text-primary); margin-bottom:6px;">Record Design Exception</div>
+          <div style="display:flex; flex-direction:column; gap:4px; font-size:11px; color:var(--text-secondary);">
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="radio" name="reason-${f.id}" value="intentional" checked />
+              <span><strong>Intentional design choice</strong> (brand nuance / optical fit)</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="radio" name="reason-${f.id}" value="not-applicable" />
+              <span><strong>Not applicable</strong> (decorative illustration / canvas scratch)</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="radio" name="reason-${f.id}" value="remind-later" />
+              <span><strong>Remind me later</strong> (defer to backlog)</span>
+            </label>
+          </div>
+          <input type="text" id="exception-note-${f.id}" placeholder="Optional custom note (e.g. approved by lead)..." style="margin-top:6px; width:100%; box-sizing:border-box; background:var(--bg-secondary); border:1px solid var(--border-color); color:var(--text-primary); padding:4px 8px; border-radius:4px; font-size:11px;" />
+          <div style="display:flex; gap:6px; justify-content:flex-end; margin-top:8px;">
+            <button class="btn-secondary btn-cancel-exception" data-id="${f.id}" style="padding:3px 8px; font-size:10px;">Cancel</button>
+            <button class="btn-primary btn-confirm-exception" data-id="${f.id}" data-node-id="${f.nodeId}" style="padding:3px 10px; font-size:10px;">Save Exception</button>
+          </div>
         </div>
       </div>
     </div>
@@ -407,6 +756,20 @@ export function renderPathTab() {
 
   let html = '';
 
+  if (pendingPracticeContext) {
+    html += `
+      <div class="card" style="background:rgba(59,130,246,0.1); border-color:var(--accent-color); padding:10px 12px; margin-bottom:10px; font-size:11px; display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <strong style="color:var(--accent-color);">🎯 Contextual Practice Challenge:</strong>
+          <div style="color:var(--text-secondary); margin-top:2px;">
+            Targeting flaw on "${pendingPracticeContext.nodeName || 'layer'}" (${LESSONS[activeSkill].title}). Fix it safely on the practice canvas first!
+          </div>
+        </div>
+        <button id="btn-dismiss-context-challenge" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:14px; padding:2px 4px;">✕</button>
+      </div>
+    `;
+  }
+
   for (const skill of skills) {
     const lesson = LESSONS[skill];
     const skillData = learnerState?.skills[skill] || { box: 0, dueDate: '', attempts: 0 };
@@ -436,7 +799,45 @@ export function renderPathTab() {
     `;
   }
 
+  // Mastery Evidence & Human Agency Section (Spec item: Evidence tracking for independent mastery)
+  const masteredCount = Object.values(learnerState?.skills || {}).filter((s) => s.box >= 4).length;
+  const resolutionsCount = learnerState?.independentResolutions || 0;
+
+  html += `
+    <div class="card" style="margin-top:12px; background:var(--bg-secondary); border-color:var(--border-color); display:flex; flex-direction:column; gap:8px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <strong style="font-size:12px; color:var(--text-primary);">Human Agency & Mastery Evidence</strong>
+        <span style="font-size:10px; font-weight:700; background:rgba(16,185,129,0.15); color:var(--success-color); padding:2px 6px; border-radius:10px;">
+          Never Make
+        </span>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; font-size:11px;">
+        <div style="background:var(--bg-primary); padding:8px 10px; border-radius:6px; border:1px solid var(--border-color);">
+          <div style="font-size:18px; font-weight:700; color:var(--accent-color);">${resolutionsCount}</div>
+          <div style="color:var(--text-secondary); margin-top:1px;">Independent Fixes</div>
+        </div>
+        <div style="background:var(--bg-primary); padding:8px 10px; border-radius:6px; border:1px solid var(--border-color);">
+          <div style="font-size:18px; font-weight:700; color:var(--success-color);">${masteredCount} / 4</div>
+          <div style="color:var(--text-secondary); margin-top:1px;">Skills Mastered</div>
+        </div>
+      </div>
+
+      <div style="font-size:10px; color:var(--text-muted); line-height:1.4;">
+        🔒 All visual choices remain 100% yours. SousArtist verifies and coaches, but never generates art or code.
+      </div>
+    </div>
+  `;
+
   pathContainer.innerHTML = html;
+
+  const btnDismissContext = document.getElementById('btn-dismiss-context-challenge');
+  if (btnDismissContext) {
+    btnDismissContext.addEventListener('click', () => {
+      pendingPracticeContext = null;
+      renderPathTab();
+    });
+  }
 
   pathContainer.querySelectorAll('.lesson-header').forEach((el) => {
     el.addEventListener('click', () => {
@@ -634,6 +1035,163 @@ if (coachInput) {
   });
 }
 
+// ── Relay Tab Rendering ─────────────────────────────────────────────────────
+function renderRelayTab(state: LearnerState) {
+  const relayList = document.getElementById('relay-list');
+  const relayCount = document.getElementById('relay-count');
+  if (!relayList) return;
+
+  const activeNotes = (state.relayNotes || []).filter((n) => !n.dismissed);
+  if (relayCount) relayCount.textContent = String(activeNotes.length);
+
+  if (activeNotes.length === 0) {
+    relayList.innerHTML = `
+      <div class="card" style="text-align:center; padding:20px; color:var(--text-muted); font-size:12px;">
+        No relay patterns yet. Leave a note for your team with <strong>+ Leave Note</strong>.
+      </div>
+    `;
+    return;
+  }
+
+  const topicColors: Record<string, string> = {
+    structure: '#6366f1',
+    naming: '#10b981',
+    spacing: '#f59e0b',
+    overrides: '#ec4899',
+    autolayout: '#3b82f6',
+  };
+
+  relayList.innerHTML = activeNotes.map((note) => {
+    const color = topicColors[note.topic] || 'var(--accent-color)';
+    return `
+      <div class="relay-card" data-note-id="${note.id}">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+          <div style="display:flex; flex-direction:column; gap:4px; flex:1;">
+            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+              <span class="relay-topic-tag" style="background:${color}22; color:${color};">${note.topic}</span>
+              ${note.targetScope ? `<span style="font-size:10px; color:var(--text-muted); background:var(--bg-hover); padding:2px 6px; border-radius:4px;">${note.targetScope}</span>` : ''}
+            </div>
+            <strong style="font-size:12px; color:var(--text-primary);">${note.title}</strong>
+          </div>
+          <button class="btn-dismiss-relay" data-note-id="${note.id}" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:14px; padding:2px; flex-shrink:0;" title="Dismiss note">✕</button>
+        </div>
+
+        <div style="font-size:12px; color:var(--text-secondary); line-height:1.4;">${note.guideline}</div>
+
+        ${note.tradeoffReason ? `
+          <div style="font-size:11px; color:var(--text-muted); display:flex; gap:6px; align-items:flex-start; background:var(--bg-primary); padding:6px 8px; border-radius:5px; border:1px solid var(--border-color);">
+            <span style="flex-shrink:0;">⚖️</span>
+            <span><strong>Why:</strong> ${note.tradeoffReason}</span>
+          </div>
+        ` : ''}
+
+        <div style="font-size:10px; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center;">
+          <span>by ${note.author}</span>
+          <span>${note.createdAt}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Wire dismiss buttons
+  relayList.querySelectorAll('.btn-dismiss-relay').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const noteId = btn.getAttribute('data-note-id');
+      if (noteId) {
+        parent.postMessage({ pluginMessage: { type: 'DISMISS_RELAY_NOTE', noteId } }, '*');
+      }
+    });
+  });
+}
+
+// ── Relay Form Wiring ────────────────────────────────────────────────────────
+const btnAddRelay = document.getElementById('btn-add-relay-pattern');
+const relayForm = document.getElementById('relay-form');
+const btnCancelRelay = document.getElementById('btn-cancel-relay');
+const btnSaveRelay = document.getElementById('btn-save-relay');
+
+if (btnAddRelay && relayForm) {
+  btnAddRelay.addEventListener('click', () => {
+    relayForm.style.display = 'flex';
+    btnAddRelay.style.display = 'none';
+  });
+}
+
+if (btnCancelRelay && relayForm && btnAddRelay) {
+  btnCancelRelay.addEventListener('click', () => {
+    relayForm.style.display = 'none';
+    btnAddRelay.style.display = '';
+    clearRelayForm();
+  });
+}
+
+if (btnSaveRelay) {
+  btnSaveRelay.addEventListener('click', () => {
+    const title = (document.getElementById('relay-title') as HTMLInputElement)?.value?.trim();
+    const guideline = (document.getElementById('relay-guideline') as HTMLTextAreaElement)?.value?.trim();
+    const tradeoff = (document.getElementById('relay-tradeoff') as HTMLInputElement)?.value?.trim();
+
+    if (!title || !guideline) {
+      showToast('Please fill in the title and guideline fields.');
+      return;
+    }
+
+    parent.postMessage({
+      pluginMessage: {
+        type: 'ADD_RELAY_NOTE',
+        note: {
+          title,
+          guideline,
+          tradeoffReason: tradeoff || '',
+          author: 'You',
+          context: learnerState?.activeProfileId?.includes('team') ? 'team' : 'personal',
+          topic: 'structure',
+          targetScope: 'General',
+        },
+      },
+    }, '*');
+
+    if (relayForm) relayForm.style.display = 'none';
+    if (btnAddRelay) (btnAddRelay as HTMLElement).style.display = '';
+    clearRelayForm();
+  });
+}
+
+function clearRelayForm() {
+  const title = document.getElementById('relay-title') as HTMLInputElement | null;
+  const guideline = document.getElementById('relay-guideline') as HTMLTextAreaElement | null;
+  const tradeoff = document.getElementById('relay-tradeoff') as HTMLInputElement | null;
+  if (title) title.value = '';
+  if (guideline) guideline.value = '';
+  if (tradeoff) tradeoff.value = '';
+}
+
+// ── Unsupported Items Notice ─────────────────────────────────────────────────
+function renderUnsupportedNotice(audit: AuditSummary) {
+  const container = document.getElementById('unsupported-container');
+  if (!container) return;
+
+  const items = audit.unsupported || [];
+  if (items.length === 0) {
+    container.style.display = 'none';
+    container.innerHTML = '';
+    return;
+  }
+
+  container.style.display = 'block';
+  container.innerHTML = `
+    <div class="unsupported-notice">
+      <div style="font-weight:700; margin-bottom:4px; color:var(--text-secondary);">ℹ️ ${items.length} layer${items.length !== 1 ? 's' : ''} skipped (unsupported fill type)</div>
+      <div style="font-size:10px; color:var(--text-muted); line-height:1.4;">
+        Gradient, image, or mixed fills cannot be analyzed for contrast offline.
+        ${items.slice(0, 3).map((i) => `<br>• "${i.nodeName}"`).join('')}
+        ${items.length > 3 ? `<br>• …and ${items.length - 3} more` : ''}
+      </div>
+    </div>
+  `;
+}
+
 // Window Message Dispatcher
 window.onmessage = (event) => {
   const msg = event.data.pluginMessage;
@@ -642,7 +1200,12 @@ window.onmessage = (event) => {
   switch (msg.type) {
     case 'LEARNER_STATE_LOADED': {
       learnerState = msg.state;
+      if (onboardingOverlay) {
+        onboardingOverlay.style.display = msg.state?.onboardingComplete ? 'none' : 'flex';
+      }
+      syncToolbarFromState(msg.state);
       renderPathTab();
+      renderRelayTab(msg.state);
       break;
     }
 
@@ -655,6 +1218,7 @@ window.onmessage = (event) => {
 
     case 'AUDIT_RESULTS': {
       renderAuditResults(msg.audit, msg.pageName);
+      renderUnsupportedNotice(msg.audit);
       break;
     }
 

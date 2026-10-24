@@ -252,6 +252,129 @@ button:focus-visible {
   margin-top: 8px;
 }
 
+/* Standards Toolbar & Dropdowns */
+.standards-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.dropdown-wrapper {
+  position: relative;
+}
+
+.pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.pill-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-color);
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+  min-width: 200px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.menu-header {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 6px 8px 2px;
+}
+
+.menu-item {
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  transition: background 0.12s ease;
+}
+
+.menu-item:hover {
+  background: var(--bg-hover);
+}
+
+.menu-item.active {
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+}
+
+.menu-item strong {
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+.menu-item small {
+  font-size: 10px;
+  color: var(--text-secondary);
+  line-height: 1.3;
+}
+
+/* Relay Cards */
+.relay-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color 0.15s ease;
+}
+
+.relay-card:hover {
+  border-color: var(--accent-color);
+}
+
+.relay-topic-tag {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--accent-color);
+}
+
+/* Unsupported Analyzer Limit Notice */
+.unsupported-notice {
+  background: rgba(100, 116, 139, 0.08);
+  border: 1px dashed var(--border-color);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
 /* Reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
   * {
@@ -286,9 +409,55 @@ button:focus-visible {
         </div>
       </div>
     </div>
+
+    <!-- Standards & Expertise Toolbar -->
+    <div class="standards-toolbar">
+      <!-- Expertise Selector -->
+      <div class="dropdown-wrapper">
+        <button class="pill-btn" id="btn-expertise-toggle" type="button" title="Switch coaching expertise style">
+          <span id="expertise-icon">⚡</span>
+          <span id="expertise-label">Intermediate</span>
+          <span style="font-size:9px; opacity:0.7;">▾</span>
+        </button>
+        <div class="dropdown-menu" id="expertise-menu" style="display:none;">
+          <div class="menu-header">Coaching Style</div>
+          <div class="menu-item" data-level="beginner">
+            <strong>🌱 Beginner</strong>
+            <small>Patient teacher: explains terms, guided steps</small>
+          </div>
+          <div class="menu-item active" data-level="intermediate">
+            <strong>⚡ Intermediate</strong>
+            <small>Supportive coach: concise hints, room to solve</small>
+          </div>
+          <div class="menu-item" data-level="expert">
+            <strong>👑 Expert</strong>
+            <small>Peer coworker: brief, surfaces edge cases & tradeoffs</small>
+          </div>
+        </div>
+      </div>
+
+      <!-- Standards Profile Selector -->
+      <div class="dropdown-wrapper" style="flex:1;">
+        <button class="pill-btn" id="btn-profile-toggle" type="button" title="Select Project / Client Standards Profile" style="width:100%; justify-content:space-between;">
+          <span style="display:flex; align-items:center; gap:6px; min-width:0; overflow:hidden;">
+            <span id="profile-icon">📋</span>
+            <span id="profile-label" style="text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">Personal Learning</span>
+          </span>
+          <span style="font-size:9px; opacity:0.7;">▾</span>
+        </button>
+        <div class="dropdown-menu" id="profile-menu" style="display:none; width:260px; right:0; left:auto;">
+          <div class="menu-header">Project Standards Profile</div>
+          <div id="profile-menu-items">
+            <!-- Dynamic profiles rendered by ui.ts -->
+          </div>
+        </div>
+      </div>
+    </div>
+
     <nav class="nav-tabs" role="tablist">
       <button class="tab-btn active" role="tab" id="tab-btn-path" data-tab="path" aria-selected="true" aria-controls="tab-path">Path</button>
       <button class="tab-btn" role="tab" id="tab-btn-audit" data-tab="audit" aria-selected="false" aria-controls="tab-audit">Audit</button>
+      <button class="tab-btn" role="tab" id="tab-btn-relay" data-tab="relay" aria-selected="false" aria-controls="tab-relay">Relay</button>
       <button class="tab-btn" role="tab" id="tab-btn-coach" data-tab="coach" aria-selected="false" aria-controls="tab-coach">Coach</button>
     </nav>
   </header>
@@ -313,6 +482,15 @@ button:focus-visible {
 
     <!-- AUDIT TAB -->
     <section class="tab-content" id="tab-audit" role="tabpanel" aria-labelledby="tab-btn-audit">
+      <!-- Active Profile Notice -->
+      <div id="active-profile-banner" style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:6px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center; font-size:11px;">
+        <span style="display:flex; align-items:center; gap:6px;">
+          <strong id="banner-profile-name">Personal Learning</strong>
+          <span id="banner-profile-rules" style="color:var(--text-secondary);">8pt grid · WCAG AA · Clean naming</span>
+        </span>
+        <span id="banner-exemptions-badge" style="color:var(--text-muted); font-size:10px;">0 exemptions</span>
+      </div>
+
       <div class="audit-scope-bar" role="group" aria-label="Audit Scope Selection">
         <button class="scope-btn active" data-scope="PAGE" type="button">Entire Page</button>
         <button class="scope-btn" data-scope="SELECTION" type="button">Selected Component</button>
@@ -341,8 +519,43 @@ button:focus-visible {
         <span>Only structural numbers leave your file.</span>
       </div>
 
-      <div id="audit-results" style="display:flex; flex-direction:column; gap:12px; margin-top:8px;">
+      <!-- Transparent Analyzer Limits Banner -->
+      <div id="unsupported-container" style="display:none;"></div>
+
+      <!-- Re-audit Delta Summary -->
+      <div id="reaudit-delta" style="display:none;"></div>
+
+      <div id="audit-results" style="display:flex; flex-direction:column; gap:12px; margin-top:4px;">
         <!-- Findings grouped by skill -->
+      </div>
+    </section>
+
+    <!-- WORKFLOW RELAY TAB (Handoff Continuity) -->
+    <section class="tab-content" id="tab-relay" role="tabpanel" aria-labelledby="tab-btn-relay">
+      <div class="card" style="font-size:12px; color:var(--text-secondary); line-height:1.4;">
+        <strong style="color:var(--text-primary); display:block; margin-bottom:2px;">Workflow Relay</strong>
+        Contextual working patterns communicated in the moment they are relevant, rather than handed off in a static document.
+      </div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-size:12px; font-weight:700;">Handoff Patterns (<span id="relay-count">0</span>)</span>
+        <button class="btn-secondary" id="btn-add-relay-pattern" style="padding:4px 8px; font-size:11px;">+ Leave Note</button>
+      </div>
+
+      <!-- Add Relay Form (Hidden by default) -->
+      <div id="relay-form" class="card" style="display:none; flex-direction:column; gap:8px;">
+        <strong style="font-size:12px;">Share a Working Pattern</strong>
+        <input type="text" id="relay-title" placeholder="Pattern title (e.g. Card Header Overrides)" style="background:var(--bg-primary); border:1px solid var(--border-color); color:var(--text-primary); padding:6px 8px; border-radius:4px; font-size:12px;" />
+        <textarea id="relay-guideline" placeholder="How to apply this pattern in Figma..." rows="2" style="background:var(--bg-primary); border:1px solid var(--border-color); color:var(--text-primary); padding:6px 8px; border-radius:4px; font-size:12px; font-family:inherit;"></textarea>
+        <input type="text" id="relay-tradeoff" placeholder="Tradeoff/Reason (e.g. Preserves variants on update)" style="background:var(--bg-primary); border:1px solid var(--border-color); color:var(--text-primary); padding:6px 8px; border-radius:4px; font-size:12px;" />
+        <div style="display:flex; gap:6px; justify-content:flex-end;">
+          <button class="btn-secondary" id="btn-cancel-relay" style="padding:4px 8px; font-size:11px;">Cancel</button>
+          <button class="btn-primary" id="btn-save-relay" style="padding:4px 10px; font-size:11px;">Save Note</button>
+        </div>
+      </div>
+
+      <div id="relay-list" style="display:flex; flex-direction:column; gap:10px;">
+        <!-- Relay cards rendered dynamically -->
       </div>
     </section>
 
@@ -360,6 +573,33 @@ button:focus-visible {
       </div>
     </section>
   </main>
+
+  <!-- Onboarding Modal -->
+  <div id="onboarding-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:10000; display:none; align-items:center; justify-content:center; padding:16px;">
+    <div style="background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:12px; padding:24px; max-width:340px; width:100%; box-shadow:0 16px 48px rgba(0,0,0,0.5);">
+      <div style="text-align:center; margin-bottom:16px;">
+        <div style="font-size:28px; margin-bottom:8px;">🎨</div>
+        <div style="font-size:16px; font-weight:700; color:var(--text-primary);">Welcome to SousArtist</div>
+        <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">How would you describe your design experience?</div>
+        <div style="font-size:10px; color:var(--text-muted); margin-top:2px;">You can change this anytime.</div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <button class="onboarding-choice btn-secondary" data-level="beginner" style="text-align:left; padding:12px; display:flex; flex-direction:column; gap:2px;">
+          <strong style="font-size:13px;">🌱 Beginner</strong>
+          <span style="font-size:11px; color:var(--text-secondary);">I'm learning Figma and design fundamentals.</span>
+        </button>
+        <button class="onboarding-choice btn-secondary" data-level="intermediate" style="text-align:left; padding:12px; display:flex; flex-direction:column; gap:2px;">
+          <strong style="font-size:13px;">⚡ Intermediate</strong>
+          <span style="font-size:11px; color:var(--text-secondary);">I can design independently and want stronger consistency.</span>
+        </button>
+        <button class="onboarding-choice btn-secondary" data-level="expert" style="text-align:left; padding:12px; display:flex; flex-direction:column; gap:2px;">
+          <strong style="font-size:13px;">👑 Expert</strong>
+          <span style="font-size:11px; color:var(--text-secondary);">I want fast audits, edge cases, and workflow feedback.</span>
+        </button>
+      </div>
+    </div>
+  </div>
 
   <div id="toast" style="display:none; position:fixed; bottom:16px; left:16px; right:16px; background:#1e293b; color:#fff; padding:10px 14px; border-radius:6px; font-size:12px; box-shadow:0 4px 12px rgba(0,0,0,0.3); border:1px solid var(--border-color); z-index:9999;"></div>
 
@@ -501,16 +741,44 @@ Rules:
 - At most 60 words. Plain, encouraging language. No emoji.
 - If asked to design or fix something for the user, say you coach rather than create, and point to a lesson.
 Output: plain text only (hints) or JSON matching the given schema (diagnosis).`;
+  function getSystemPrompt(expertise = "intermediate") {
+    switch (expertise) {
+      case "beginner":
+        return `You are SousArtist, a dedicated, patient design teacher for beginners.
+Your coaching style: Explain foundational terminology clearly, break down problems into step-by-step guidance, ask gentle Socratic questions to build intuition, and provide extra encouragement.
+Rules:
+- Never produce designs, layouts, palettes, code, HTML, or CSS.
+- Under 65 words. Plain, encouraging language. No emoji.
+- Use only the numbers provided in CONTEXT.`;
+      case "expert":
+        return `You are SousArtist, a peer design systems coworker for senior designers.
+Your coaching style: Be brief and pragmatic. Assume full familiarity with Figma and design fundamentals. Focus on edge cases, tokens, component reusability, and handoff tradeoffs.
+Rules:
+- Never produce designs, layouts, palettes, code, HTML, or CSS.
+- Under 45 words. Sharp, professional, peer-to-peer.
+- Discuss tradeoffs and edge cases. Skip basic definitions.`;
+      case "intermediate":
+      default:
+        return `You are SousArtist, a supportive coach for intermediate designers.
+Your coaching style: Give concise, professional explanations and actionable hints, leaving room for independent problem-solving. Reference design systems and UX standards.
+Rules:
+- Never produce designs, layouts, palettes, code, HTML, or CSS.
+- Under 50 words. Direct and constructive. No emoji.
+- Use only the numbers provided in CONTEXT.`;
+    }
+  }
   function formatHintPrompt(params) {
-    return `Provide a Level ${params.level} coaching hint for the skill "${params.skill}".
+    const expertise = params.expertise || "intermediate";
+    return `Provide a Level ${params.level} coaching hint for the skill "${params.skill}" tailored for a ${expertise} designer.
 CONTEXT NUMBERS:
 - Measured: ${JSON.stringify(params.measured)}
 - Target threshold: ${JSON.stringify(params.expected)}
 - Attempts so far: ${params.attempts}
+- Designer Expertise: ${expertise}
 
 REQUIREMENTS FOR LEVEL ${params.level}:
-${params.level === 1 ? "- Ask a thoughtful Socratic question about the visual rhythm or readability. Do NOT reveal any target numbers or solutions." : params.level === 2 ? "- Name the exact design rule and mention the measured value. Do NOT reveal the final solution value." : "- Guide the learner with specific tool actions (which Figma panel, shortcut, or setting to adjust). State rule thresholds, but NEVER provide an exact hex code or layout coordinates."}
-Remember: At most 60 words. No code blocks. Plain, supportive tone.`;
+${params.level === 1 ? expertise === "beginner" ? "- Ask a patient Socratic question explaining the visual concept. Do NOT reveal target numbers." : expertise === "expert" ? "- Note the measurement anomaly and briefly mention the token/tradeoff. Do NOT reveal solution." : "- Ask a thoughtful Socratic question about the visual rhythm or readability. Do NOT reveal any target numbers." : params.level === 2 ? expertise === "beginner" ? "- Name the design rule and explain why it matters, citing the measured value. Do NOT reveal the solution." : expertise === "expert" ? "- Point directly to the design system rule and tradeoff. Do NOT reveal exact fix values." : "- Name the exact design rule and mention the measured value. Do NOT reveal the final solution value." : "- Guide with specific tool actions (which Figma panel, shortcut, or setting to adjust). State rule thresholds, but NEVER provide an exact hex code or layout coordinates."}
+Remember: Under 60 words. No code blocks. Tone matching ${expertise} level.`;
   }
   function formatDiagnosisPrompt(summary) {
     const anonymizedPayload = {};
@@ -668,14 +936,15 @@ OUTPUT FORMAT: Return strictly a valid JSON object matching:
           offline: true
         };
       }
+      const systemPrompt = getSystemPrompt(params.expertise || "intermediate");
       try {
         const prompt = formatHintPrompt(params);
-        let text = await this.client.generateText(prompt, SYSTEM_PROMPT);
+        let text = await this.client.generateText(prompt, systemPrompt);
         let guardRes = guardHint(text, params.level, params.expected);
         if (!guardRes.ok) {
           const retryPrompt = `${prompt}
 STRICT WARNING: Your previous output was rejected (${guardRes.reason}). Under 60 words, NO code blocks, NO hex codes, NO target numbers.`;
-          text = await this.client.generateText(retryPrompt, SYSTEM_PROMPT);
+          text = await this.client.generateText(retryPrompt, systemPrompt);
           guardRes = guardHint(text, params.level, params.expected);
         }
         if (guardRes.ok) {
@@ -709,7 +978,7 @@ STRICT WARNING: Your previous output was rejected (${guardRes.reason}). Under 60
       }
       return "explain_concept";
     }
-    async handleUserQuery(query, closestSkill = "contrast") {
+    async handleUserQuery(query, closestSkill = "contrast", expertise = "intermediate") {
       const intent = this.classifyIntent(query);
       if (intent === "generate_design") {
         return {
@@ -719,9 +988,10 @@ STRICT WARNING: Your previous output was rejected (${guardRes.reason}). Under 60
         };
       }
       try {
-        const prompt = `The beginner asks this conceptual question about UI design: "${query}".
-Answer in at most 50 words explaining the core principle or rule. Do NOT produce designs, CSS, or color palettes.`;
-        const text = await this.client.generateText(prompt, SYSTEM_PROMPT);
+        const systemPrompt = getSystemPrompt(expertise);
+        const prompt = `The ${expertise} designer asks this conceptual question about UI design: "${query}".
+Answer in at most 50 words explaining the principle, rule, or architectural tradeoff. Do NOT produce designs, CSS, or color palettes.`;
+        const text = await this.client.generateText(prompt, systemPrompt);
         const guard = guardHint(text, 2);
         if (guard.ok) {
           return { response: text, intent: "explain_concept", offline: false };
@@ -742,6 +1012,7 @@ Answer in at most 50 words explaining the core principle or rule. Do NOT produce
   var activeFrameId = null;
   var currentHintLevel = 0;
   var hintsUsedInSession = 0;
+  var pendingPracticeContext = null;
   var coach = new SousArtistCoach();
   var tabButtons = document.querySelectorAll(".tab-btn");
   var tabContents = document.querySelectorAll(".tab-content");
@@ -754,6 +1025,118 @@ Answer in at most 50 words explaining the core principle or rule. Do NOT produce
     tabContents.forEach((c) => {
       c.classList.toggle("active", c.id === `tab-${targetTab}`);
     });
+  }
+  var btnExpertiseToggle = document.getElementById("btn-expertise-toggle");
+  var expertiseMenu = document.getElementById("expertise-menu");
+  var expertiseLabel = document.getElementById("expertise-label");
+  var expertiseIcon = document.getElementById("expertise-icon");
+  var EXPERTISE_META = {
+    beginner: { icon: "\u{1F331}", label: "Beginner" },
+    intermediate: { icon: "\u26A1", label: "Intermediate" },
+    expert: { icon: "\u{1F451}", label: "Expert" }
+  };
+  if (btnExpertiseToggle && expertiseMenu) {
+    btnExpertiseToggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const isOpen = expertiseMenu.style.display !== "none";
+      closeAllDropdowns();
+      if (!isOpen) expertiseMenu.style.display = "flex";
+    });
+    expertiseMenu.querySelectorAll(".menu-item").forEach((item) => {
+      item.addEventListener("click", () => {
+        const level = item.getAttribute("data-level");
+        if (!level) return;
+        expertiseMenu.querySelectorAll(".menu-item").forEach((i) => i.classList.remove("active"));
+        item.classList.add("active");
+        const meta = EXPERTISE_META[level] || EXPERTISE_META.intermediate;
+        if (expertiseLabel) expertiseLabel.textContent = meta.label;
+        if (expertiseIcon) expertiseIcon.textContent = meta.icon;
+        closeAllDropdowns();
+        parent.postMessage({ pluginMessage: { type: "SET_EXPERTISE", expertise: level } }, "*");
+      });
+    });
+  }
+  var onboardingOverlay = document.getElementById("onboarding-overlay");
+  document.querySelectorAll(".onboarding-choice").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const level = btn.getAttribute("data-level");
+      if (!level) return;
+      if (onboardingOverlay) onboardingOverlay.style.display = "none";
+      parent.postMessage({ pluginMessage: { type: "COMPLETE_ONBOARDING", expertise: level } }, "*");
+      if (learnerState) {
+        learnerState.expertiseLevel = level;
+        learnerState.onboardingComplete = true;
+        syncToolbarFromState(learnerState);
+        renderPathTab();
+      }
+    });
+  });
+  var btnProfileToggle = document.getElementById("btn-profile-toggle");
+  var profileMenu = document.getElementById("profile-menu");
+  var profileLabel = document.getElementById("profile-label");
+  if (btnProfileToggle && profileMenu) {
+    btnProfileToggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const isOpen = profileMenu.style.display !== "none";
+      closeAllDropdowns();
+      if (!isOpen) profileMenu.style.display = "flex";
+    });
+  }
+  function renderProfileMenu() {
+    const container = document.getElementById("profile-menu-items");
+    if (!container || !learnerState) return;
+    container.innerHTML = learnerState.profiles.map((p) => {
+      const isActive = p.id === learnerState.activeProfileId;
+      const contextIcon = p.context === "team" ? "\u{1F465}" : p.context === "freelance" ? "\u{1F4BC}" : "\u{1F9EA}";
+      return `
+      <div class="menu-item ${isActive ? "active" : ""}" data-profile-id="${p.id}" title="${p.description}">
+        <strong>${contextIcon} ${p.name}</strong>
+        <small>${p.description}</small>
+      </div>
+    `;
+    }).join("");
+    container.querySelectorAll(".menu-item").forEach((item) => {
+      item.addEventListener("click", () => {
+        const profileId = item.getAttribute("data-profile-id");
+        if (!profileId) return;
+        closeAllDropdowns();
+        parent.postMessage({ pluginMessage: { type: "SET_ACTIVE_PROFILE", profileId } }, "*");
+      });
+    });
+  }
+  function closeAllDropdowns() {
+    if (expertiseMenu) expertiseMenu.style.display = "none";
+    if (profileMenu) profileMenu.style.display = "none";
+  }
+  document.addEventListener("click", closeAllDropdowns);
+  function syncToolbarFromState(state) {
+    const meta = EXPERTISE_META[state.expertiseLevel] || EXPERTISE_META.intermediate;
+    if (expertiseLabel) expertiseLabel.textContent = meta.label;
+    if (expertiseIcon) expertiseIcon.textContent = meta.icon;
+    if (expertiseMenu) {
+      expertiseMenu.querySelectorAll(".menu-item").forEach((item) => {
+        item.classList.toggle("active", item.getAttribute("data-level") === state.expertiseLevel);
+      });
+    }
+    const activeProfile = state.profiles?.find((p) => p.id === state.activeProfileId);
+    if (profileLabel && activeProfile) profileLabel.textContent = activeProfile.name;
+    renderProfileMenu();
+    const bannerName = document.getElementById("banner-profile-name");
+    const bannerRules = document.getElementById("banner-profile-rules");
+    const bannerExemptions = document.getElementById("banner-exemptions-badge");
+    if (activeProfile) {
+      if (bannerName) bannerName.textContent = activeProfile.name;
+      if (bannerRules) {
+        const rules = [
+          `${activeProfile.spacing.baseGrid}pt grid`,
+          `WCAG ${activeProfile.contrast.standard}`,
+          activeProfile.naming.pattern === "slash-hierarchy" ? "Slash naming" : activeProfile.naming.pattern === "pascal-case" ? "PascalCase" : "Clean naming"
+        ].join(" \xB7 ");
+        bannerRules.textContent = rules;
+      }
+      const exemptCount = activeProfile.exemptions?.length || 0;
+      if (bannerExemptions) bannerExemptions.textContent = `${exemptCount} exemption${exemptCount !== 1 ? "s" : ""}`;
+    }
   }
   tabButtons.forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -823,6 +1206,51 @@ Answer in at most 50 words explaining the core principle or rule. Do NOT produce
       ${getScopeButtonLabel(currentAuditScope)}
     `;
     }
+    const deltaContainer = document.getElementById("reaudit-delta");
+    if (deltaContainer) {
+      const history = learnerState?.auditHistory || [];
+      const lastEntry = history.length > 0 ? history[history.length - 1] : null;
+      if (lastEntry && typeof lastEntry.totalGaps === "number" && lastEntry.totalGaps > audit.totalCount) {
+        const resolvedCount = lastEntry.totalGaps - audit.totalCount;
+        deltaContainer.style.display = "block";
+        deltaContainer.innerHTML = `
+        <div class="card" style="background:rgba(16,185,129,0.12); border-color:var(--success-color); padding:10px 14px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="font-weight:700; color:var(--success-color); font-size:13px; display:flex; align-items:center; gap:6px;">
+              <span>\u{1F389}</span>
+              <span>${lastEntry.totalGaps} \u2192 ${audit.totalCount} Issues Resolved!</span>
+            </div>
+            <div style="font-size:11px; color:var(--text-secondary); margin-top:2px;">
+              You fixed ${resolvedCount} design gap${resolvedCount !== 1 ? "s" : ""} by hand in Figma.
+            </div>
+          </div>
+          <span style="font-size:12px; font-weight:700; color:var(--success-color); background:rgba(16,185,129,0.2); padding:3px 8px; border-radius:12px;">
+            +${resolvedCount * 10} XP
+          </span>
+        </div>
+      `;
+        parent.postMessage({ pluginMessage: { type: "INCREMENT_INDEPENDENT_RESOLUTIONS" } }, "*");
+      } else {
+        deltaContainer.style.display = "none";
+        deltaContainer.innerHTML = "";
+      }
+    }
+    parent.postMessage({
+      pluginMessage: {
+        type: "RECORD_AUDIT_HISTORY",
+        entry: {
+          timestamp: Date.now(),
+          pageName,
+          totalGaps: audit.totalCount,
+          bySkill: {
+            contrast: audit.bySkill.contrast?.count || 0,
+            "spacing-grid": audit.bySkill["spacing-grid"]?.count || 0,
+            "layer-naming": audit.bySkill["layer-naming"]?.count || 0,
+            "auto-layout": audit.bySkill["auto-layout"]?.count || 0
+          }
+        }
+      }
+    }, "*");
     if (!auditResults) return;
     if (audit.totalCount === 0) {
       auditResults.innerHTML = `
@@ -914,28 +1342,68 @@ Answer in at most 50 words explaining the core principle or rule. Do NOT produce
     auditResults.querySelectorAll(".btn-study-sandbox").forEach((btn) => {
       btn.addEventListener("click", () => {
         const skill = btn.getAttribute("data-skill");
+        const nodeName = btn.getAttribute("data-node-name") || void 0;
         if (skill) {
           activeSkill = skill;
+          pendingPracticeContext = { skill, nodeName };
           switchTab("path");
           renderPathTab();
         }
       });
     });
-    auditResults.querySelectorAll(".btn-dismiss-finding").forEach((btn) => {
+    auditResults.querySelectorAll(".btn-open-exception").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         const id = btn.getAttribute("data-id");
+        const box = document.getElementById(`exception-box-${id}`);
+        if (box) {
+          box.style.display = box.style.display === "none" ? "block" : "none";
+        }
+      });
+    });
+    auditResults.querySelectorAll(".btn-cancel-exception").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const id = btn.getAttribute("data-id");
+        const box = document.getElementById(`exception-box-${id}`);
+        if (box) box.style.display = "none";
+      });
+    });
+    auditResults.querySelectorAll(".btn-confirm-exception").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const id = btn.getAttribute("data-id");
+        const nodeId = btn.getAttribute("data-node-id");
+        if (!id) return;
+        const checkedRadio = document.querySelector(`input[name="reason-${id}"]:checked`);
+        const reason = checkedRadio?.value || "intentional";
+        const noteInput = document.getElementById(`exception-note-${id}`);
+        const customNote = noteInput?.value?.trim() || void 0;
+        parent.postMessage({
+          pluginMessage: {
+            type: "DISMISS_WITH_REASON",
+            findingId: id,
+            reason,
+            customNote,
+            nodeId
+          }
+        }, "*");
         const card = document.getElementById(`card-${id}`);
         if (card) {
-          card.style.opacity = "0.5";
+          card.style.opacity = "0.6";
+          const reasonLabels = {
+            "intentional": "Intentional design choice",
+            "not-applicable": "Not applicable to context",
+            "remind-later": "Deferred to backlog"
+          };
           card.innerHTML = `
-          <div style="padding:8px 12px; font-size:11px; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center;">
-            <span>\u2713 Marked as intentional design choice</span>
-            <span style="font-size:10px; color:var(--text-dim);">(Will not flag)</span>
+          <div style="padding:10px 14px; font-size:11px; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center;">
+            <span>\u2713 Exception recorded: <strong>${reasonLabels[reason]}</strong>${customNote ? ` ("${customNote}")` : ""}</span>
+            <span style="font-size:10px; color:var(--text-dim);">(Exempt from audit)</span>
           </div>
         `;
-          showToast("Marked as intentional.");
         }
+        showToast(`Exception recorded: ${reason}`);
       });
     });
     auditResults.querySelectorAll(".btn-inspect").forEach((btn) => {
@@ -965,7 +1433,7 @@ Answer in at most 50 words explaining the core principle or rule. Do NOT produce
       measuredStr = `Contrast Ratio: ${f.measured.ratio}:1 (needs ${f.expected.minRatio}:1)`;
       layerIcon = "\u{1F524}";
     } else if (f.skill === "spacing-grid") {
-      measuredStr = `${f.measured.property}: ${f.measured.value}px (use multiple of 4, e.g. ${f.expected.recommended8pt}px)`;
+      measuredStr = `${f.measured.property}: ${f.measured.value}px (use multiple of 4/8, e.g. ${f.expected.recommended8pt}px)`;
       layerIcon = "\u{1F4D0}";
     } else if (f.skill === "layer-naming") {
       measuredStr = `Name: "${f.measured.currentName}"`;
@@ -975,8 +1443,123 @@ Answer in at most 50 words explaining the core principle or rule. Do NOT produce
       layerIcon = "\u{1F4E6}";
     }
     const severityColor = f.severity === "high" ? "var(--danger-color)" : f.severity === "medium" ? "var(--warning-color)" : "var(--text-secondary)";
-    const severityLabel = f.severity.toUpperCase();
     const nodeTitle = f.nodeName ? `"${f.nodeName}"` : "Selected Layer";
+    const expertise = learnerState?.expertiseLevel || "intermediate";
+    const skillTradeoffs = {
+      "contrast": "Higher contrast improves outdoor and low-vision accessibility, but pure black on pure white (#000 on #FFF) can cause halation. Use dark charcoal (#1F2937) to meet AA comfortably.",
+      "spacing-grid": "8pt grids guarantee clean integer rendering across 1x/2x/3x screen densities. 4pt increments provide essential density for compact components like badges or tables.",
+      "layer-naming": "Semantic naming takes seconds now but saves hours in engineering handoff, token synchronization, and multi-designer file clarity.",
+      "auto-layout": "Auto Layout guarantees multi-device responsive wrapping and padding. Fixed frames should be reserved solely for freeform illustrations or non-responsive icons."
+    };
+    const tradeoffText = f.tradeoffTip || skillTradeoffs[f.skill] || "";
+    let detailsBody = "";
+    if (expertise === "expert") {
+      detailsBody = `
+      <div style="margin-top:8px; display:flex; flex-direction:column; gap:6px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-primary); padding:6px 10px; border-radius:4px; border:1px solid var(--border-color); font-size:11px;">
+          <div><strong style="color:var(--text-secondary);">Measured:</strong> <span style="color:var(--text-primary); font-family:monospace;">${JSON.stringify(f.measured).replace(/[{}"]/g, "")}</span></div>
+          <div><strong style="color:var(--text-secondary);">Expected:</strong> <span style="color:var(--accent-color); font-family:monospace;">${JSON.stringify(f.expected).replace(/[{}"]/g, "")}</span></div>
+        </div>
+
+        ${tradeoffText ? `
+          <div style="font-size:11px; color:var(--text-muted); line-height:1.4; padding:2px 4px;">
+            \u2696\uFE0F <strong style="color:var(--text-secondary);">Trade-off:</strong> ${tradeoffText}
+          </div>
+        ` : ""}
+
+        ${f.shortcutTip ? `
+          <div style="font-size:10px; color:var(--text-muted); padding:2px 4px;">
+            \u26A1 <strong>Shortcut:</strong> ${f.shortcutTip}
+          </div>
+        ` : ""}
+      </div>
+    `;
+    } else if (expertise === "intermediate") {
+      detailsBody = `
+      <div style="margin-top:8px; display:flex; flex-direction:column; gap:8px;">
+        <div>
+          <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin-bottom:2px;">
+            \u{1F50D} Diagnostic
+          </div>
+          <div style="color:var(--text-primary); font-size:12px; line-height:1.4;">
+            ${f.summary || measuredStr}
+          </div>
+        </div>
+
+        ${f.actionSteps && f.actionSteps.length > 0 ? `
+          <div style="background:var(--bg-primary); padding:8px 10px; border-radius:6px; border:1px solid var(--border-color);">
+            <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--accent-color); margin-bottom:4px;">
+              \u{1F6E0}\uFE0F Action Steps
+            </div>
+            <ol style="padding-left:18px; margin:0; font-size:11px; line-height:1.5; color:var(--text-primary);">
+              ${f.actionSteps.slice(0, 3).map((step) => `<li>${step}</li>`).join("")}
+            </ol>
+          </div>
+        ` : ""}
+
+        ${tradeoffText ? `
+          <div style="font-size:11px; color:var(--text-muted); line-height:1.4;">
+            \u2696\uFE0F <strong>Trade-off:</strong> ${tradeoffText}
+          </div>
+        ` : ""}
+
+        ${f.shortcutTip ? `
+          <div style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
+            <span>\u26A1</span>
+            <span><strong>Shortcut:</strong> ${f.shortcutTip}</span>
+          </div>
+        ` : ""}
+      </div>
+    `;
+    } else {
+      detailsBody = `
+      <div style="margin-top:8px; display:flex; flex-direction:column; gap:8px;">
+        <div>
+          <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin-bottom:2px;">
+            \u{1F50D} Component Diagnostic
+          </div>
+          <div style="color:var(--text-primary); font-size:12px; line-height:1.4;">
+            ${f.summary || measuredStr}
+          </div>
+        </div>
+
+        ${f.whyItMatters ? `
+          <div>
+            <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin-bottom:2px;">
+              \u{1F4A1} Why It Matters for This Component
+            </div>
+            <div style="color:var(--text-muted); font-size:11px; line-height:1.4;">
+              ${f.whyItMatters}
+            </div>
+          </div>
+        ` : ""}
+
+        ${f.actionSteps && f.actionSteps.length > 0 ? `
+          <div style="background:var(--bg-primary); padding:8px 10px; border-radius:6px; border:1px solid var(--border-color);">
+            <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--success-color); margin-bottom:4px;">
+              \u{1F6E0}\uFE0F Guided Fix Steps (Do in Figma)
+            </div>
+            <ol style="padding-left:18px; margin:0; font-size:11px; line-height:1.5; color:var(--text-primary);">
+              ${f.actionSteps.map((step) => `<li>${step}</li>`).join("")}
+            </ol>
+          </div>
+        ` : ""}
+
+        ${tradeoffText ? `
+          <div style="font-size:11px; color:var(--text-muted); line-height:1.4;">
+            \u2696\uFE0F <strong>Design Trade-off:</strong> ${tradeoffText}
+          </div>
+        ` : ""}
+
+        ${f.shortcutTip ? `
+          <div style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
+            <span>\u26A1</span>
+            <span><strong>Shortcut:</strong> ${f.shortcutTip}</span>
+          </div>
+        ` : ""}
+      </div>
+    `;
+    }
     return `
     <div class="finding-card" id="card-${f.id}" style="background:var(--bg-primary); border:1px solid var(--border-color); border-radius:6px; overflow:hidden; font-size:12px; transition:border-color 0.2s ease;">
       <!-- Header Row -->
@@ -990,9 +1573,9 @@ Answer in at most 50 words explaining the core principle or rule. Do NOT produce
           </div>
         </div>
 
-        <div style="display:flex; align-items:center; gap:8px; flex-shrink:0; margin-left:8px;">
+        <div style="display:flex; align-items:center; gap:6px; flex-shrink:0; margin-left:8px;">
           <button class="btn-inspect" data-node-id="${f.nodeId}" style="background:var(--bg-hover); border:1px solid var(--border-color); color:var(--accent-color); padding:3px 8px; border-radius:4px; cursor:pointer; font-size:11px; font-weight:600;" title="Highlight this layer in Figma">
-            Locate
+            \u{1F3AF} Show in File
           </button>
           <span class="finding-toggle-arrow" id="arrow-${f.id}" style="font-size:10px; color:var(--text-muted); width:14px; text-align:center;">\u25BC</span>
         </div>
@@ -1000,62 +1583,48 @@ Answer in at most 50 words explaining the core principle or rule. Do NOT produce
 
       <!-- Expandable Component Betterment Body -->
       <div class="finding-details" id="details-${f.id}" style="padding:0 12px 12px; border-top:1px solid var(--border-color); background:var(--bg-card); display:flex; flex-direction:column; gap:8px;">
-        <!-- Diagnostic Summary -->
-        <div style="margin-top:8px;">
-          <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin-bottom:2px;">
-            \u{1F50D} Component Diagnostic
-          </div>
-          <div style="color:var(--text-primary); font-size:12px; line-height:1.4;">
-            ${f.summary || measuredStr}
-          </div>
-        </div>
-
-        <!-- Why It Matters -->
-        ${f.whyItMatters ? `
-          <div>
-            <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-secondary); margin-bottom:2px;">
-              \u{1F4A1} Why It Matters for This Component
-            </div>
-            <div style="color:var(--text-muted); font-size:11px; line-height:1.4;">
-              ${f.whyItMatters}
-            </div>
-          </div>
-        ` : ""}
-
-        <!-- How To Fix Step-by-Step -->
-        ${f.actionSteps && f.actionSteps.length > 0 ? `
-          <div style="background:var(--bg-primary); padding:8px 10px; border-radius:6px; border:1px solid var(--border-color);">
-            <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--success-color); margin-bottom:4px;">
-              \u{1F6E0}\uFE0F Guided Fix Steps (Do in Figma)
-            </div>
-            <ol style="padding-left:18px; margin:0; font-size:11px; line-height:1.5; color:var(--text-primary);">
-              ${f.actionSteps.map((step) => `<li>${step}</li>`).join("")}
-            </ol>
-          </div>
-        ` : ""}
-
-        <!-- Shortcut Tip -->
-        ${f.shortcutTip ? `
-          <div style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
-            <span>\u26A1</span>
-            <span><strong>Shortcut:</strong> ${f.shortcutTip}</span>
-          </div>
-        ` : ""}
+        ${detailsBody}
 
         <!-- Direct Actions -->
-        <div style="display:flex; gap:6px; margin-top:4px; padding-top:6px; border-top:1px solid var(--border-color); flex-wrap:wrap;">
-          <button class="btn-recheck-finding btn-primary" data-node-id="${f.nodeId}" data-id="${f.id}" style="padding:5px 10px; font-size:11px; font-weight:600;" title="Re-check this component right now">
+        <div style="display:flex; gap:6px; margin-top:4px; padding-top:6px; border-top:1px solid var(--border-color); flex-wrap:wrap; align-items:center;">
+          <button class="btn-recheck-finding btn-primary" data-node-id="${f.nodeId}" data-id="${f.id}" style="padding:4px 8px; font-size:11px; font-weight:600;" title="Re-check this component right now">
             \u21BB Re-check
           </button>
-          <button class="btn-ask-about-finding btn-secondary" data-node-name="${f.nodeName || "layer"}" data-skill="${f.skill}" data-summary="${f.summary || measuredStr}" style="flex:1; min-width:130px; padding:5px 8px; font-size:11px;">
-            \u{1F4AC} Ask Coach About This
+          ${expertise === "beginner" ? `
+            <button class="btn-ask-about-finding btn-secondary" data-node-name="${f.nodeName || "layer"}" data-skill="${f.skill}" data-summary="${f.summary || measuredStr}" style="padding:4px 8px; font-size:11px;">
+              \u{1F4AC} Ask Coach
+            </button>
+          ` : ""}
+          <button class="btn-open-exception btn-secondary" data-id="${f.id}" style="padding:4px 8px; font-size:11px;" title="Record intentional exception or defer">
+            \u2713 Exception
           </button>
-          <button class="btn-dismiss-finding btn-secondary" data-id="${f.id}" style="padding:5px 8px; font-size:11px;" title="Mark this as intentional design choice">
-            \u2713 Dismiss (Intentional)
+          <button class="btn-study-sandbox btn-secondary" data-skill="${f.skill}" data-node-name="${f.nodeName || ""}" style="padding:4px 8px; font-size:11px;" title="Open isolated 2-minute practice lesson">
+            \u{1F4DA} Practice
           </button>
-          <button class="btn-study-sandbox btn-secondary" data-skill="${f.skill}" style="padding:5px 8px; font-size:11px;" title="Open isolated 2-minute practice lesson">
-            \u{1F4DA} Sandbox
-          </button>
+        </div>
+
+        <!-- Inline Exception Selector (Hidden until clicked) -->
+        <div class="exception-box" id="exception-box-${f.id}" style="display:none; background:var(--bg-primary); border:1px solid var(--border-color); border-radius:6px; padding:10px; margin-top:4px;">
+          <div style="font-size:11px; font-weight:700; color:var(--text-primary); margin-bottom:6px;">Record Design Exception</div>
+          <div style="display:flex; flex-direction:column; gap:4px; font-size:11px; color:var(--text-secondary);">
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="radio" name="reason-${f.id}" value="intentional" checked />
+              <span><strong>Intentional design choice</strong> (brand nuance / optical fit)</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="radio" name="reason-${f.id}" value="not-applicable" />
+              <span><strong>Not applicable</strong> (decorative illustration / canvas scratch)</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="radio" name="reason-${f.id}" value="remind-later" />
+              <span><strong>Remind me later</strong> (defer to backlog)</span>
+            </label>
+          </div>
+          <input type="text" id="exception-note-${f.id}" placeholder="Optional custom note (e.g. approved by lead)..." style="margin-top:6px; width:100%; box-sizing:border-box; background:var(--bg-secondary); border:1px solid var(--border-color); color:var(--text-primary); padding:4px 8px; border-radius:4px; font-size:11px;" />
+          <div style="display:flex; gap:6px; justify-content:flex-end; margin-top:8px;">
+            <button class="btn-secondary btn-cancel-exception" data-id="${f.id}" style="padding:3px 8px; font-size:10px;">Cancel</button>
+            <button class="btn-primary btn-confirm-exception" data-id="${f.id}" data-node-id="${f.nodeId}" style="padding:3px 10px; font-size:10px;">Save Exception</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1087,6 +1656,19 @@ Answer in at most 50 words explaining the core principle or rule. Do NOT produce
       "auto-layout": "\u{1F4E6}"
     };
     let html = "";
+    if (pendingPracticeContext) {
+      html += `
+      <div class="card" style="background:rgba(59,130,246,0.1); border-color:var(--accent-color); padding:10px 12px; margin-bottom:10px; font-size:11px; display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <strong style="color:var(--accent-color);">\u{1F3AF} Contextual Practice Challenge:</strong>
+          <div style="color:var(--text-secondary); margin-top:2px;">
+            Targeting flaw on "${pendingPracticeContext.nodeName || "layer"}" (${LESSONS[activeSkill].title}). Fix it safely on the practice canvas first!
+          </div>
+        </div>
+        <button id="btn-dismiss-context-challenge" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:14px; padding:2px 4px;">\u2715</button>
+      </div>
+    `;
+    }
     for (const skill of skills) {
       const lesson = LESSONS[skill];
       const skillData = learnerState?.skills[skill] || { box: 0, dueDate: "", attempts: 0 };
@@ -1114,7 +1696,41 @@ Answer in at most 50 words explaining the core principle or rule. Do NOT produce
       </div>
     `;
     }
+    const masteredCount = Object.values(learnerState?.skills || {}).filter((s) => s.box >= 4).length;
+    const resolutionsCount = learnerState?.independentResolutions || 0;
+    html += `
+    <div class="card" style="margin-top:12px; background:var(--bg-secondary); border-color:var(--border-color); display:flex; flex-direction:column; gap:8px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <strong style="font-size:12px; color:var(--text-primary);">Human Agency & Mastery Evidence</strong>
+        <span style="font-size:10px; font-weight:700; background:rgba(16,185,129,0.15); color:var(--success-color); padding:2px 6px; border-radius:10px;">
+          Never Make
+        </span>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; font-size:11px;">
+        <div style="background:var(--bg-primary); padding:8px 10px; border-radius:6px; border:1px solid var(--border-color);">
+          <div style="font-size:18px; font-weight:700; color:var(--accent-color);">${resolutionsCount}</div>
+          <div style="color:var(--text-secondary); margin-top:1px;">Independent Fixes</div>
+        </div>
+        <div style="background:var(--bg-primary); padding:8px 10px; border-radius:6px; border:1px solid var(--border-color);">
+          <div style="font-size:18px; font-weight:700; color:var(--success-color);">${masteredCount} / 4</div>
+          <div style="color:var(--text-secondary); margin-top:1px;">Skills Mastered</div>
+        </div>
+      </div>
+
+      <div style="font-size:10px; color:var(--text-muted); line-height:1.4;">
+        \u{1F512} All visual choices remain 100% yours. SousArtist verifies and coaches, but never generates art or code.
+      </div>
+    </div>
+  `;
     pathContainer.innerHTML = html;
+    const btnDismissContext = document.getElementById("btn-dismiss-context-challenge");
+    if (btnDismissContext) {
+      btnDismissContext.addEventListener("click", () => {
+        pendingPracticeContext = null;
+        renderPathTab();
+      });
+    }
     pathContainer.querySelectorAll(".lesson-header").forEach((el) => {
       el.addEventListener("click", () => {
         const skill = el.getAttribute("data-skill");
@@ -1283,13 +1899,154 @@ Answer in at most 50 words explaining the core principle or rule. Do NOT produce
       }
     });
   }
+  function renderRelayTab(state) {
+    const relayList = document.getElementById("relay-list");
+    const relayCount = document.getElementById("relay-count");
+    if (!relayList) return;
+    const activeNotes = (state.relayNotes || []).filter((n) => !n.dismissed);
+    if (relayCount) relayCount.textContent = String(activeNotes.length);
+    if (activeNotes.length === 0) {
+      relayList.innerHTML = `
+      <div class="card" style="text-align:center; padding:20px; color:var(--text-muted); font-size:12px;">
+        No relay patterns yet. Leave a note for your team with <strong>+ Leave Note</strong>.
+      </div>
+    `;
+      return;
+    }
+    const topicColors = {
+      structure: "#6366f1",
+      naming: "#10b981",
+      spacing: "#f59e0b",
+      overrides: "#ec4899",
+      autolayout: "#3b82f6"
+    };
+    relayList.innerHTML = activeNotes.map((note) => {
+      const color = topicColors[note.topic] || "var(--accent-color)";
+      return `
+      <div class="relay-card" data-note-id="${note.id}">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+          <div style="display:flex; flex-direction:column; gap:4px; flex:1;">
+            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+              <span class="relay-topic-tag" style="background:${color}22; color:${color};">${note.topic}</span>
+              ${note.targetScope ? `<span style="font-size:10px; color:var(--text-muted); background:var(--bg-hover); padding:2px 6px; border-radius:4px;">${note.targetScope}</span>` : ""}
+            </div>
+            <strong style="font-size:12px; color:var(--text-primary);">${note.title}</strong>
+          </div>
+          <button class="btn-dismiss-relay" data-note-id="${note.id}" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:14px; padding:2px; flex-shrink:0;" title="Dismiss note">\u2715</button>
+        </div>
+
+        <div style="font-size:12px; color:var(--text-secondary); line-height:1.4;">${note.guideline}</div>
+
+        ${note.tradeoffReason ? `
+          <div style="font-size:11px; color:var(--text-muted); display:flex; gap:6px; align-items:flex-start; background:var(--bg-primary); padding:6px 8px; border-radius:5px; border:1px solid var(--border-color);">
+            <span style="flex-shrink:0;">\u2696\uFE0F</span>
+            <span><strong>Why:</strong> ${note.tradeoffReason}</span>
+          </div>
+        ` : ""}
+
+        <div style="font-size:10px; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center;">
+          <span>by ${note.author}</span>
+          <span>${note.createdAt}</span>
+        </div>
+      </div>
+    `;
+    }).join("");
+    relayList.querySelectorAll(".btn-dismiss-relay").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const noteId = btn.getAttribute("data-note-id");
+        if (noteId) {
+          parent.postMessage({ pluginMessage: { type: "DISMISS_RELAY_NOTE", noteId } }, "*");
+        }
+      });
+    });
+  }
+  var btnAddRelay = document.getElementById("btn-add-relay-pattern");
+  var relayForm = document.getElementById("relay-form");
+  var btnCancelRelay = document.getElementById("btn-cancel-relay");
+  var btnSaveRelay = document.getElementById("btn-save-relay");
+  if (btnAddRelay && relayForm) {
+    btnAddRelay.addEventListener("click", () => {
+      relayForm.style.display = "flex";
+      btnAddRelay.style.display = "none";
+    });
+  }
+  if (btnCancelRelay && relayForm && btnAddRelay) {
+    btnCancelRelay.addEventListener("click", () => {
+      relayForm.style.display = "none";
+      btnAddRelay.style.display = "";
+      clearRelayForm();
+    });
+  }
+  if (btnSaveRelay) {
+    btnSaveRelay.addEventListener("click", () => {
+      const title = document.getElementById("relay-title")?.value?.trim();
+      const guideline = document.getElementById("relay-guideline")?.value?.trim();
+      const tradeoff = document.getElementById("relay-tradeoff")?.value?.trim();
+      if (!title || !guideline) {
+        showToast("Please fill in the title and guideline fields.");
+        return;
+      }
+      parent.postMessage({
+        pluginMessage: {
+          type: "ADD_RELAY_NOTE",
+          note: {
+            title,
+            guideline,
+            tradeoffReason: tradeoff || "",
+            author: "You",
+            context: learnerState?.activeProfileId?.includes("team") ? "team" : "personal",
+            topic: "structure",
+            targetScope: "General"
+          }
+        }
+      }, "*");
+      if (relayForm) relayForm.style.display = "none";
+      if (btnAddRelay) btnAddRelay.style.display = "";
+      clearRelayForm();
+    });
+  }
+  function clearRelayForm() {
+    const title = document.getElementById("relay-title");
+    const guideline = document.getElementById("relay-guideline");
+    const tradeoff = document.getElementById("relay-tradeoff");
+    if (title) title.value = "";
+    if (guideline) guideline.value = "";
+    if (tradeoff) tradeoff.value = "";
+  }
+  function renderUnsupportedNotice(audit) {
+    const container = document.getElementById("unsupported-container");
+    if (!container) return;
+    const items = audit.unsupported || [];
+    if (items.length === 0) {
+      container.style.display = "none";
+      container.innerHTML = "";
+      return;
+    }
+    container.style.display = "block";
+    container.innerHTML = `
+    <div class="unsupported-notice">
+      <div style="font-weight:700; margin-bottom:4px; color:var(--text-secondary);">\u2139\uFE0F ${items.length} layer${items.length !== 1 ? "s" : ""} skipped (unsupported fill type)</div>
+      <div style="font-size:10px; color:var(--text-muted); line-height:1.4;">
+        Gradient, image, or mixed fills cannot be analyzed for contrast offline.
+        ${items.slice(0, 3).map((i) => `<br>\u2022 "${i.nodeName}"`).join("")}
+        ${items.length > 3 ? `<br>\u2022 \u2026and ${items.length - 3} more` : ""}
+      </div>
+    </div>
+  `;
+  }
   window.onmessage = (event) => {
     const msg = event.data.pluginMessage;
     if (!msg) return;
     switch (msg.type) {
       case "LEARNER_STATE_LOADED": {
         learnerState = msg.state;
+        if (onboardingOverlay) {
+          onboardingOverlay.style.display = msg.state?.onboardingComplete ? "none" : "flex";
+        }
+        syncToolbarFromState(msg.state);
         renderPathTab();
+        renderRelayTab(msg.state);
         break;
       }
       case "SELECTION_COUNT": {
@@ -1300,6 +2057,7 @@ Answer in at most 50 words explaining the core principle or rule. Do NOT produce
       }
       case "AUDIT_RESULTS": {
         renderAuditResults(msg.audit, msg.pageName);
+        renderUnsupportedNotice(msg.audit);
         break;
       }
       case "NODE_RECHECK_RESULT": {

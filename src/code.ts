@@ -10,7 +10,7 @@ import { loadLearnerState, saveLearnerState } from './adapters/figma/storage';
 import { advanceLeitnerBox, resetLeitnerOnAuditFailure } from './core/learner/leitner';
 import { recordLessonCompletion } from './core/learner/xp';
 import { getTodayDateString } from './core/learner/state';
-import { DesignFacts, SkillId } from './core/types';
+import { DesignFacts, SkillId, ExceptionReason } from './core/types';
 
 figma.showUI(__html__, { width: 380, height: 640, themeColors: true });
 
@@ -89,7 +89,10 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: any }) => {
           facts = await extractDesignFacts(figma.currentPage);
         }
 
-        const audit = analyzeAll(facts);
+        const state = await loadLearnerState();
+        const activeProfile = state.profiles?.find(p => p.id === state.activeProfileId) || state.profiles?.[0];
+
+        const audit = analyzeAll(facts, activeProfile);
 
         // Transfer signal check: if the user failed a skill on their real file, drop to box 0!
         if (figma.currentPage.name !== 'SousArtist Practice') {
@@ -276,6 +279,141 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: any }) => {
           });
         }
       }
+      break;
+    }
+
+    case 'SET_EXPERTISE': {
+      if (msg.expertise === 'beginner' || msg.expertise === 'intermediate' || msg.expertise === 'expert') {
+        const state = await loadLearnerState();
+        state.expertiseLevel = msg.expertise;
+        await saveLearnerState(state);
+        figma.notify(`Coaching mode set to: ${msg.expertise.toUpperCase()}`);
+        figma.ui.postMessage({ type: 'LEARNER_STATE_LOADED', state });
+      }
+      break;
+    }
+
+    case 'SET_ACTIVE_PROFILE': {
+      if (typeof msg.profileId === 'string') {
+        const state = await loadLearnerState();
+        if (state.profiles?.some(p => p.id === msg.profileId)) {
+          state.activeProfileId = msg.profileId;
+          await saveLearnerState(state);
+          const p = state.profiles.find(x => x.id === msg.profileId);
+          figma.notify(`Standards Profile: "${p?.name || msg.profileId}" active.`);
+          figma.ui.postMessage({ type: 'LEARNER_STATE_LOADED', state });
+        }
+      }
+      break;
+    }
+
+    case 'ADD_EXEMPTION': {
+      if (typeof msg.nodeId === 'string') {
+        const state = await loadLearnerState();
+        const activeProfile = state.profiles?.find(p => p.id === state.activeProfileId) || state.profiles?.[0];
+        if (activeProfile && !activeProfile.exemptions.includes(msg.nodeId)) {
+          activeProfile.exemptions.push(msg.nodeId);
+          await saveLearnerState(state);
+          figma.notify(`Saved layer as intentional exception in "${activeProfile.name}".`);
+          figma.ui.postMessage({ type: 'LEARNER_STATE_LOADED', state });
+        }
+      }
+      break;
+    }
+
+    case 'ADD_RELAY_NOTE': {
+      if (msg.note && typeof msg.note === 'object') {
+        const state = await loadLearnerState();
+        state.relayNotes = state.relayNotes || [];
+        state.relayNotes.unshift({
+          id: `relay-${Date.now()}`,
+          author: msg.note.author || 'Designer',
+          context: msg.note.context || 'team',
+          topic: msg.note.topic || 'structure',
+          title: msg.note.title || 'Working Pattern',
+          guideline: msg.note.guideline || '',
+          tradeoffReason: msg.note.tradeoffReason || '',
+          targetScope: msg.note.targetScope || 'General',
+          createdAt: 'Just now',
+        });
+        await saveLearnerState(state);
+        figma.notify(`Workflow Relay note added!`);
+        figma.ui.postMessage({ type: 'LEARNER_STATE_LOADED', state });
+      }
+      break;
+    }
+
+    case 'DISMISS_RELAY_NOTE': {
+      if (typeof msg.noteId === 'string') {
+        const state = await loadLearnerState();
+        const note = state.relayNotes?.find(n => n.id === msg.noteId);
+        if (note) {
+          note.dismissed = true;
+          await saveLearnerState(state);
+          figma.ui.postMessage({ type: 'LEARNER_STATE_LOADED', state });
+        }
+      }
+      break;
+    }
+
+    case 'COMPLETE_ONBOARDING': {
+      if (msg.expertise === 'beginner' || msg.expertise === 'intermediate' || msg.expertise === 'expert') {
+        const state = await loadLearnerState();
+        state.expertiseLevel = msg.expertise;
+        state.onboardingComplete = true;
+        await saveLearnerState(state);
+        figma.notify(`Welcome! Coaching set to: ${msg.expertise.charAt(0).toUpperCase() + msg.expertise.slice(1)}`);
+        figma.ui.postMessage({ type: 'LEARNER_STATE_LOADED', state });
+      }
+      break;
+    }
+
+    case 'DISMISS_WITH_REASON': {
+      if (typeof msg.findingId === 'string' && typeof msg.reason === 'string') {
+        const state = await loadLearnerState();
+        state.dismissedFindings = state.dismissedFindings || {};
+        state.dismissedFindings[msg.findingId] = {
+          reason: msg.reason as ExceptionReason,
+          customNote: msg.customNote || undefined,
+        };
+        // Also add to profile exemptions if 'intentional'
+        if (msg.reason === 'intentional' && msg.nodeId) {
+          const activeProfile = state.profiles?.find(p => p.id === state.activeProfileId) || state.profiles?.[0];
+          if (activeProfile && !activeProfile.exemptions.includes(msg.nodeId)) {
+            activeProfile.exemptions.push(msg.nodeId);
+          }
+        }
+        await saveLearnerState(state);
+        const reasonLabels: Record<string, string> = {
+          'intentional': 'Intentional design choice',
+          'not-applicable': 'Not applicable to this context',
+          'remind-later': 'Will revisit later',
+        };
+        figma.notify(reasonLabels[msg.reason] || 'Exception noted.');
+        figma.ui.postMessage({ type: 'LEARNER_STATE_LOADED', state });
+      }
+      break;
+    }
+
+    case 'RECORD_AUDIT_HISTORY': {
+      if (msg.entry && typeof msg.entry === 'object') {
+        const state = await loadLearnerState();
+        state.auditHistory = state.auditHistory || [];
+        state.auditHistory.push(msg.entry);
+        // Keep last 20 entries max
+        if (state.auditHistory.length > 20) {
+          state.auditHistory = state.auditHistory.slice(-20);
+        }
+        await saveLearnerState(state);
+      }
+      break;
+    }
+
+    case 'INCREMENT_INDEPENDENT_RESOLUTIONS': {
+      const state = await loadLearnerState();
+      state.independentResolutions = (state.independentResolutions || 0) + 1;
+      await saveLearnerState(state);
+      figma.ui.postMessage({ type: 'LEARNER_STATE_LOADED', state });
       break;
     }
 

@@ -1,29 +1,45 @@
 // SousArtist - Analyzers Aggregator
 // Runs all deterministic analyzers and produces structured findings + summary
 
-import { AuditSummary, DesignFacts, Finding, SkillId, SkillSummary } from '../types';
-import { analyzeContrast } from './contrast';
+import { AuditSummary, DesignFacts, Finding, SkillId, SkillSummary, StandardsProfile, UnsupportedItem } from '../types';
+import { analyzeContrast, detectUnsupportedCases } from './contrast';
 import { analyzeSpacing } from './spacing';
 import { analyzeNaming } from './naming';
 import { analyzeAutoLayout } from './autolayout';
 
-export { analyzeContrast } from './contrast';
+export { analyzeContrast, detectUnsupportedCases } from './contrast';
 export { analyzeSpacing } from './spacing';
 export { analyzeNaming } from './naming';
 export { analyzeAutoLayout } from './autolayout';
 
-export function analyzeAll(facts: DesignFacts): AuditSummary {
-  const contrastFindings = analyzeContrast(facts);
-  const spacingFindings = analyzeSpacing(facts);
-  const namingFindings = analyzeNaming(facts);
-  const autoLayoutFindings = analyzeAutoLayout(facts);
+export function analyzeAll(facts: DesignFacts, profile?: StandardsProfile): AuditSummary {
+  const contrastFindings = analyzeContrast(facts, profile);
+  const spacingFindings = analyzeSpacing(facts, profile);
+  const namingFindings = analyzeNaming(facts, profile);
+  const autoLayoutFindings = analyzeAutoLayout(facts, profile);
 
-  const findings: Finding[] = [
+  const rawFindings: Finding[] = [
     ...contrastFindings,
     ...spacingFindings,
     ...namingFindings,
     ...autoLayoutFindings,
   ];
+
+  // Filter out intentional exemptions saved in profile
+  const exemptions = new Set(profile?.exemptions || []);
+  let exemptedCount = 0;
+  const findings: Finding[] = [];
+
+  for (const f of rawFindings) {
+    if (exemptions.has(f.nodeId)) {
+      exemptedCount += 1;
+    } else {
+      findings.push(f);
+    }
+  }
+
+  // Detect cases where deterministic rule evaluation is unsupported
+  const unsupported: UnsupportedItem[] = detectUnsupportedCases(facts);
 
   const emptySummary = (): SkillSummary => ({
     count: 0,
@@ -51,5 +67,8 @@ export function analyzeAll(facts: DesignFacts): AuditSummary {
     bySkill,
     totalCount: findings.length,
     truncated: Boolean(facts.truncated),
+    unsupported,
+    exemptedCount,
+    profileName: profile?.name || 'Default',
   };
 }

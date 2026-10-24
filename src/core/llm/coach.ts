@@ -1,10 +1,11 @@
 // SousArtist - Coach Orchestrator
 // Coordinates diagnosis, graded hints, intent classification, and output guarding
 
-import { AuditSummary, SkillId } from '../types';
+import { AuditSummary, ExpertiseLevel, SkillId } from '../types';
 import { LlmClient, ResilientLlmClient } from './client';
 import {
   SYSTEM_PROMPT,
+  getSystemPrompt,
   formatDiagnosisPrompt,
   formatHintPrompt,
   formatIntentPrompt,
@@ -62,6 +63,7 @@ export class SousArtistCoach {
     measured: Record<string, number | string>;
     expected: Record<string, number | string>;
     attempts: number;
+    expertise?: ExpertiseLevel;
   }): Promise<{ hint: string; level: number; guarded: boolean; offline: boolean }> {
     // Level 4 is purely static worked example per spec section 7.2
     if (params.level >= 4) {
@@ -73,15 +75,17 @@ export class SousArtistCoach {
       };
     }
 
+    const systemPrompt = getSystemPrompt(params.expertise || 'intermediate');
+
     try {
       const prompt = formatHintPrompt(params);
-      let text = await this.client.generateText(prompt, SYSTEM_PROMPT);
+      let text = await this.client.generateText(prompt, systemPrompt);
 
       let guardRes = guardHint(text, params.level, params.expected);
       if (!guardRes.ok) {
         // Retry once with strict reminder appended
         const retryPrompt = `${prompt}\nSTRICT WARNING: Your previous output was rejected (${guardRes.reason}). Under 60 words, NO code blocks, NO hex codes, NO target numbers.`;
-        text = await this.client.generateText(retryPrompt, SYSTEM_PROMPT);
+        text = await this.client.generateText(retryPrompt, systemPrompt);
         guardRes = guardHint(text, params.level, params.expected);
       }
 
@@ -125,7 +129,11 @@ export class SousArtistCoach {
     return 'explain_concept';
   }
 
-  async handleUserQuery(query: string, closestSkill: SkillId = 'contrast'): Promise<{ response: string; intent: string; offline: boolean }> {
+  async handleUserQuery(
+    query: string,
+    closestSkill: SkillId = 'contrast',
+    expertise: ExpertiseLevel = 'intermediate'
+  ): Promise<{ response: string; intent: string; offline: boolean }> {
     const intent = this.classifyIntent(query);
 
     // Rule 5: If the user asks the coach to create, design, rewrite or replace something, reply with canned redirect
@@ -138,9 +146,10 @@ export class SousArtistCoach {
     }
 
     try {
-      const prompt = `The beginner asks this conceptual question about UI design: "${query}".
-Answer in at most 50 words explaining the core principle or rule. Do NOT produce designs, CSS, or color palettes.`;
-      const text = await this.client.generateText(prompt, SYSTEM_PROMPT);
+      const systemPrompt = getSystemPrompt(expertise);
+      const prompt = `The ${expertise} designer asks this conceptual question about UI design: "${query}".
+Answer in at most 50 words explaining the principle, rule, or architectural tradeoff. Do NOT produce designs, CSS, or color palettes.`;
+      const text = await this.client.generateText(prompt, systemPrompt);
       const guard = guardHint(text, 2);
 
       if (guard.ok) {

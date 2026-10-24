@@ -1,18 +1,22 @@
 // SousArtist - Spacing Grid Analyzer
 // Deterministic rule engine - 4pt/8pt grid system
 
-import { DesignFacts, Finding } from '../types';
+import { DesignFacts, Finding, StandardsProfile } from '../types';
 
-export function analyzeSpacing(facts: DesignFacts): Finding[] {
+export function analyzeSpacing(facts: DesignFacts, profile?: StandardsProfile): Finding[] {
   const findings: Finding[] = [];
+  const baseGrid = profile?.spacing?.baseGrid ?? 4;
+  const allowedExceptions = profile?.spacing?.allowedExceptions ?? [4, 12];
 
   for (const node of facts.nodes) {
     if (node.layoutMode === 'NONE') continue;
 
     // Check itemSpacing
     if (node.itemSpacing !== null && node.itemSpacing !== 0) {
-      if (node.itemSpacing % 4 !== 0) {
-        const nearest8 = Math.max(0, Math.round(node.itemSpacing / 8) * 8);
+      const isAllowed = (node.itemSpacing % baseGrid === 0) || allowedExceptions.includes(node.itemSpacing);
+      if (!isAllowed) {
+        const nearest = Math.max(0, Math.round(node.itemSpacing / baseGrid) * baseGrid);
+        const nearest8pt = Math.max(0, Math.round(node.itemSpacing / 8) * 8);
         findings.push({
           id: `spacing-item-${node.id}`,
           skill: 'spacing-grid',
@@ -25,18 +29,20 @@ export function analyzeSpacing(facts: DesignFacts): Finding[] {
             value: node.itemSpacing,
           },
           expected: {
-            gridMultiple: 4,
-            recommended8pt: nearest8,
+            gridMultiple: baseGrid,
+            recommended8pt: nearest8pt,
           },
-          summary: `Frame "${node.name}" has itemSpacing of ${node.itemSpacing}px, which violates the 4pt/8pt grid system.`,
+          profileContext: profile ? `${profile.name} (${baseGrid}pt grid)` : undefined,
+          summary: `Frame "${node.name}" has itemSpacing of ${node.itemSpacing}px, which violates the ${baseGrid}pt grid system.`,
           whyItMatters: 'Arbitrary pixel gaps create subconscious visual noise and cause padding discrepancies when engineers translate Figma frames to CSS flex/grid.',
+          tradeoffTip: `Optical adjustments may warrant exceptions (e.g. ${allowedExceptions.join(', ')}px). Use "Dismiss (Intentional)" if this is purposeful.`,
           actionSteps: [
-            `Click "Locate" to select "${node.name}".`,
+            `Click "Show in File" to select "${node.name}".`,
             `In Figma's right-hand Auto layout panel, find "Gap between items".`,
-            `Change the gap from ${node.itemSpacing}px to ${nearest8}px (nearest 8pt multiple) or a multiple of 4.`,
+            `Change the gap from ${node.itemSpacing}px to ${nearest}px (nearest ${baseGrid}pt multiple).`,
             `Re-run audit to confirm clean grid alignment!`,
           ],
-          shortcutTip: 'Hold Shift + Arrow keys to nudge in 8px increments.',
+          shortcutTip: `Hold Shift + Arrow keys to nudge in ${baseGrid}px increments.`,
         });
       }
     }
@@ -47,8 +53,10 @@ export function analyzeSpacing(facts: DesignFacts): Finding[] {
       const sideLabels = { l: 'Left', r: 'Right', t: 'Top', b: 'Bottom' };
       for (const side of sides) {
         const val = node.padding[side];
-        if (val !== 0 && val % 4 !== 0) {
-          const nearest8 = Math.max(0, Math.round(val / 8) * 8);
+        const isAllowed = (val % baseGrid === 0) || allowedExceptions.includes(val);
+        if (val !== 0 && !isAllowed) {
+          const nearest = Math.max(0, Math.round(val / baseGrid) * baseGrid);
+          const nearest8pt = Math.max(0, Math.round(val / 8) * 8);
           findings.push({
             id: `spacing-pad-${side}-${node.id}`,
             skill: 'spacing-grid',
@@ -61,14 +69,16 @@ export function analyzeSpacing(facts: DesignFacts): Finding[] {
               value: val,
             },
             expected: {
-              gridMultiple: 4,
-              recommended8pt: nearest8,
+              gridMultiple: baseGrid,
+              recommended8pt: nearest8pt,
             },
-            summary: `Frame "${node.name}" has ${sideLabels[side]} padding of ${val}px, which is not divisible by 4.`,
-            whyItMatters: 'Predictable spacing grids (4, 8, 16, 24px) establish cohesive visual rhythm and prevent awkward asymmetric margins.',
+            profileContext: profile ? `${profile.name} (${baseGrid}pt grid)` : undefined,
+            summary: `Frame "${node.name}" has ${sideLabels[side]} padding of ${val}px, which violates the ${baseGrid}pt grid.`,
+            whyItMatters: 'Predictable spacing grids establish cohesive visual rhythm and prevent awkward asymmetric margins.',
+            tradeoffTip: 'Optical spacing adjustments for nested components can be marked as Intentional to keep clean records.',
             actionSteps: [
-              `Click "Locate" to select "${node.name}".`,
-              `In the right-hand Auto layout section, adjust ${sideLabels[side]} padding from ${val}px to ${nearest8}px.`,
+              `Click "Show in File" to select "${node.name}".`,
+              `In the right-hand Auto layout section, adjust ${sideLabels[side]} padding from ${val}px to ${nearest}px.`,
               `Re-run audit to verify!`,
             ],
             shortcutTip: 'Standard padding progression: 8px (compact), 16px (card default), 24px (spacious).',

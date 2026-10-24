@@ -214,7 +214,7 @@
     const darker = Math.min(l1, l2);
     return (lighter + 0.05) / (darker + 0.05);
   }
-  function analyzeContrast(facts) {
+  function analyzeContrast(facts, profile) {
     const findings = [];
     const nodeMap = /* @__PURE__ */ new Map();
     for (const node of facts.nodes) {
@@ -230,19 +230,22 @@
       }
       return { r: 1, g: 1, b: 1 };
     }
+    const minNormal = profile?.contrast?.minNormalRatio ?? 4.5;
+    const minLarge = profile?.contrast?.minLargeRatio ?? 3;
+    const standardName = profile?.contrast?.standard ?? "AA";
     for (const node of facts.nodes) {
       if (node.type !== "TEXT" || !node.textColor) continue;
       const bg = getEffectiveBackground(node);
       const ratio = getContrastRatio(node.textColor, bg);
       const isLarge = node.fontSize !== null && node.fontSize >= 24 || node.fontSize !== null && node.fontSize >= 18.66 && node.fontBold === true;
-      const threshold = isLarge ? 3 : 4.5;
+      const threshold = isLarge ? minLarge : minNormal;
       if (ratio < threshold) {
         const fontSizeStr = node.fontSize ? `${node.fontSize}px` : "text";
         const styleStr = isLarge ? "large text" : "normal text";
         findings.push({
           id: `contrast-${node.id}`,
           skill: "contrast",
-          severity: ratio < 3 ? "high" : "medium",
+          severity: ratio < (isLarge ? 2.5 : 3) ? "high" : "medium",
           nodeId: node.id,
           nodeName: node.name || "Text Layer",
           nodeType: "TEXT",
@@ -253,12 +256,14 @@
           },
           expected: {
             minRatio: threshold,
-            targetLevel: isLarge ? "WCAG Large Text (3.0:1)" : "WCAG Normal Text (4.5:1)"
+            targetLevel: `WCAG ${standardName} (${threshold}:1)`
           },
-          summary: `Text "${node.name}" (${fontSizeStr}) has ${ratio.toFixed(1)}:1 contrast against its background. WCAG AA requires at least ${threshold}:1 for ${styleStr}.`,
-          whyItMatters: "Fails WCAG AA accessibility standards. Low contrast causes text to wash out under glare or dim lighting, and makes reading difficult for people with vision impairments or color blindness.",
+          profileContext: profile ? `${profile.name} (WCAG ${standardName})` : void 0,
+          summary: `Text "${node.name}" (${fontSizeStr}) has ${ratio.toFixed(1)}:1 contrast against its background. Standard requires at least ${threshold}:1 for ${styleStr}.`,
+          whyItMatters: `Fails WCAG ${standardName} accessibility standards. Low contrast causes text to wash out under glare or dim lighting, and makes reading difficult for people with vision impairments or color blindness.`,
+          tradeoffTip: "If low contrast was intentionally chosen for disabled state or watermarks, mark it as Dismiss (Intentional).",
           actionSteps: [
-            `Click "Locate" to select "${node.name}" in your Figma canvas.`,
+            `Click "Show in File" to select "${node.name}" in your Figma canvas.`,
             `In Figma's right-hand panel, go to the "Fill" section.`,
             `Adjust the text color or container background to increase the luminance difference until contrast reaches at least ${threshold}:1.`,
             `Re-run audit to verify the fix passes!`
@@ -269,15 +274,33 @@
     }
     return findings;
   }
+  function detectUnsupportedCases(facts) {
+    const unsupported = [];
+    for (const node of facts.nodes) {
+      if (node.type === "TEXT" && (node.hasUnsupportedFill || !node.textColor)) {
+        unsupported.push({
+          nodeId: node.id,
+          nodeName: node.name || "Text",
+          skill: "contrast",
+          reason: "Layer has image or gradient fill; deterministic offline contrast measurement is skipped."
+        });
+      }
+    }
+    return unsupported;
+  }
 
   // src/core/analyzers/spacing.ts
-  function analyzeSpacing(facts) {
+  function analyzeSpacing(facts, profile) {
     const findings = [];
+    const baseGrid = profile?.spacing?.baseGrid ?? 4;
+    const allowedExceptions = profile?.spacing?.allowedExceptions ?? [4, 12];
     for (const node of facts.nodes) {
       if (node.layoutMode === "NONE") continue;
       if (node.itemSpacing !== null && node.itemSpacing !== 0) {
-        if (node.itemSpacing % 4 !== 0) {
-          const nearest8 = Math.max(0, Math.round(node.itemSpacing / 8) * 8);
+        const isAllowed = node.itemSpacing % baseGrid === 0 || allowedExceptions.includes(node.itemSpacing);
+        if (!isAllowed) {
+          const nearest = Math.max(0, Math.round(node.itemSpacing / baseGrid) * baseGrid);
+          const nearest8pt = Math.max(0, Math.round(node.itemSpacing / 8) * 8);
           findings.push({
             id: `spacing-item-${node.id}`,
             skill: "spacing-grid",
@@ -290,18 +313,20 @@
               value: node.itemSpacing
             },
             expected: {
-              gridMultiple: 4,
-              recommended8pt: nearest8
+              gridMultiple: baseGrid,
+              recommended8pt: nearest8pt
             },
-            summary: `Frame "${node.name}" has itemSpacing of ${node.itemSpacing}px, which violates the 4pt/8pt grid system.`,
+            profileContext: profile ? `${profile.name} (${baseGrid}pt grid)` : void 0,
+            summary: `Frame "${node.name}" has itemSpacing of ${node.itemSpacing}px, which violates the ${baseGrid}pt grid system.`,
             whyItMatters: "Arbitrary pixel gaps create subconscious visual noise and cause padding discrepancies when engineers translate Figma frames to CSS flex/grid.",
+            tradeoffTip: `Optical adjustments may warrant exceptions (e.g. ${allowedExceptions.join(", ")}px). Use "Dismiss (Intentional)" if this is purposeful.`,
             actionSteps: [
-              `Click "Locate" to select "${node.name}".`,
+              `Click "Show in File" to select "${node.name}".`,
               `In Figma's right-hand Auto layout panel, find "Gap between items".`,
-              `Change the gap from ${node.itemSpacing}px to ${nearest8}px (nearest 8pt multiple) or a multiple of 4.`,
+              `Change the gap from ${node.itemSpacing}px to ${nearest}px (nearest ${baseGrid}pt multiple).`,
               `Re-run audit to confirm clean grid alignment!`
             ],
-            shortcutTip: "Hold Shift + Arrow keys to nudge in 8px increments."
+            shortcutTip: `Hold Shift + Arrow keys to nudge in ${baseGrid}px increments.`
           });
         }
       }
@@ -310,8 +335,10 @@
         const sideLabels = { l: "Left", r: "Right", t: "Top", b: "Bottom" };
         for (const side of sides) {
           const val = node.padding[side];
-          if (val !== 0 && val % 4 !== 0) {
-            const nearest8 = Math.max(0, Math.round(val / 8) * 8);
+          const isAllowed = val % baseGrid === 0 || allowedExceptions.includes(val);
+          if (val !== 0 && !isAllowed) {
+            const nearest = Math.max(0, Math.round(val / baseGrid) * baseGrid);
+            const nearest8pt = Math.max(0, Math.round(val / 8) * 8);
             findings.push({
               id: `spacing-pad-${side}-${node.id}`,
               skill: "spacing-grid",
@@ -324,14 +351,16 @@
                 value: val
               },
               expected: {
-                gridMultiple: 4,
-                recommended8pt: nearest8
+                gridMultiple: baseGrid,
+                recommended8pt: nearest8pt
               },
-              summary: `Frame "${node.name}" has ${sideLabels[side]} padding of ${val}px, which is not divisible by 4.`,
-              whyItMatters: "Predictable spacing grids (4, 8, 16, 24px) establish cohesive visual rhythm and prevent awkward asymmetric margins.",
+              profileContext: profile ? `${profile.name} (${baseGrid}pt grid)` : void 0,
+              summary: `Frame "${node.name}" has ${sideLabels[side]} padding of ${val}px, which violates the ${baseGrid}pt grid.`,
+              whyItMatters: "Predictable spacing grids establish cohesive visual rhythm and prevent awkward asymmetric margins.",
+              tradeoffTip: "Optical spacing adjustments for nested components can be marked as Intentional to keep clean records.",
               actionSteps: [
-                `Click "Locate" to select "${node.name}".`,
-                `In the right-hand Auto layout section, adjust ${sideLabels[side]} padding from ${val}px to ${nearest8}px.`,
+                `Click "Show in File" to select "${node.name}".`,
+                `In the right-hand Auto layout section, adjust ${sideLabels[side]} padding from ${val}px to ${nearest}px.`,
                 `Re-run audit to verify!`
               ],
               shortcutTip: "Standard padding progression: 8px (compact), 16px (card default), 24px (spacious)."
@@ -345,12 +374,28 @@
 
   // src/core/analyzers/naming.ts
   var DEFAULT_NAME_REGEX = /^(Frame|Group|Rectangle|Ellipse|Vector|Line|Polygon|Star|Section)\s?\d*$/i;
-  function analyzeNaming(facts) {
+  function analyzeNaming(facts, profile) {
     const findings = [];
+    const pattern = profile?.naming?.pattern ?? "default-check";
     for (const node of facts.nodes) {
       if (node.type === "TEXT") continue;
       if (node.type !== "FRAME" && node.type !== "GROUP" && node.type !== "SHAPE") continue;
-      if (DEFAULT_NAME_REGEX.test(node.name.trim())) {
+      const trimmed = node.name.trim();
+      let isViolation = false;
+      let expectedGuideline = "Semantic name describing purpose (e.g. CardHeader, IconWrapper, PrimaryBtn)";
+      let summaryText = `${node.type} "${node.name}" uses a default Figma generated name that obscures its functional role.`;
+      if (DEFAULT_NAME_REGEX.test(trimmed)) {
+        isViolation = true;
+      } else if (pattern === "slash-hierarchy" && node.isComponent && !trimmed.includes("/")) {
+        isViolation = true;
+        expectedGuideline = 'Slash-hierarchy pattern: e.g. "Button/Primary", "Input/Active", "Card/Header"';
+        summaryText = `Component "${node.name}" does not use the project's slash-hierarchy naming convention (Category/Name).`;
+      } else if (pattern === "pascal-case" && node.isComponent && !/^[A-Z][a-zA-Z0-9]*$/.test(trimmed)) {
+        isViolation = true;
+        expectedGuideline = 'PascalCase pattern: e.g. "PrimaryButton", "HeroCard", "NavMenu"';
+        summaryText = `Component "${node.name}" does not follow the project's PascalCase convention.`;
+      }
+      if (isViolation) {
         findings.push({
           id: `naming-${node.id}`,
           skill: "layer-naming",
@@ -363,14 +408,16 @@
             nodeType: node.type
           },
           expected: {
-            guideline: "Semantic name describing purpose (e.g. CardHeader, IconWrapper, PrimaryBtn)"
+            guideline: expectedGuideline
           },
-          summary: `${node.type} "${node.name}" uses a default Figma generated name that obscures its functional role.`,
-          whyItMatters: 'Default names like "Frame 12" or "Rectangle 4" slow down team collaboration, create confusion during component handoff, and make design systems harder to maintain.',
+          profileContext: profile ? `${profile.name} (${pattern})` : void 0,
+          summary: summaryText,
+          whyItMatters: "Descriptive names slow down team collaboration, create confusion during component handoff, and make design systems harder to maintain.",
+          tradeoffTip: "Temporary scratch layers can be named loosely, but components and export assets should strictly adhere to team naming standards.",
           actionSteps: [
-            `Click "Locate" to highlight "${node.name}".`,
+            `Click "Show in File" to highlight "${node.name}".`,
             `Press "Cmd / Ctrl + R" (or double-click the layer name in Figma's left panel).`,
-            `Rename it using PascalCase or clear descriptive nouns (e.g. "UserProfileCard", "ThumbnailWrapper", or "ActionBtn").`,
+            `Rename it using ${expectedGuideline}.`,
             `Re-run audit to confirm!`
           ],
           shortcutTip: 'Press "Cmd / Ctrl + R" to open the Rename dialog (supports batch rename).'
@@ -381,10 +428,11 @@
   }
 
   // src/core/analyzers/autolayout.ts
-  function analyzeAutoLayout(facts) {
+  function analyzeAutoLayout(facts, profile) {
     const findings = [];
+    const minChildren = 2;
     for (const node of facts.nodes) {
-      if (node.type === "FRAME" && node.childCount >= 2 && node.layoutMode === "NONE") {
+      if (node.type === "FRAME" && node.childCount >= minChildren && node.layoutMode === "NONE") {
         findings.push({
           id: `autolayout-${node.id}`,
           skill: "auto-layout",
@@ -401,10 +449,12 @@
             layoutMode: "HORIZONTAL or VERTICAL",
             benefit: "Responsive flex flow and predictable spacing (Shift+A)"
           },
+          profileContext: profile ? profile.name : void 0,
           summary: `Frame "${node.name}" contains ${node.childCount} child elements using manual absolute positioning instead of Auto Layout.`,
           whyItMatters: "Without Auto Layout, dynamic content changes (like longer text or screen resizing) cause elements to overlap or misalign, requiring tedious manual tweaking and slowing down responsive coding.",
+          tradeoffTip: 'Freeform canvas artboards, decorative illustrations, or badge overlays can use absolute positioning. Use "Dismiss (Intentional)" to mark valid exceptions.',
           actionSteps: [
-            `Click "Locate" to highlight "${node.name}" on your canvas.`,
+            `Click "Show in File" to highlight "${node.name}" on your canvas.`,
             `Press "Shift + A" (or click the "+" icon next to Auto layout in the right sidebar).`,
             `Choose your layout flow: Vertical (top-to-bottom stack) or Horizontal (side-by-side row).`,
             `Set gap and padding to multiples of 4 or 8 (e.g., 12px or 16px).`,
@@ -418,17 +468,28 @@
   }
 
   // src/core/analyzers/index.ts
-  function analyzeAll(facts) {
-    const contrastFindings = analyzeContrast(facts);
-    const spacingFindings = analyzeSpacing(facts);
-    const namingFindings = analyzeNaming(facts);
-    const autoLayoutFindings = analyzeAutoLayout(facts);
-    const findings = [
+  function analyzeAll(facts, profile) {
+    const contrastFindings = analyzeContrast(facts, profile);
+    const spacingFindings = analyzeSpacing(facts, profile);
+    const namingFindings = analyzeNaming(facts, profile);
+    const autoLayoutFindings = analyzeAutoLayout(facts, profile);
+    const rawFindings = [
       ...contrastFindings,
       ...spacingFindings,
       ...namingFindings,
       ...autoLayoutFindings
     ];
+    const exemptions = new Set(profile?.exemptions || []);
+    let exemptedCount = 0;
+    const findings = [];
+    for (const f of rawFindings) {
+      if (exemptions.has(f.nodeId)) {
+        exemptedCount += 1;
+      } else {
+        findings.push(f);
+      }
+    }
+    const unsupported = detectUnsupportedCases(facts);
     const emptySummary = () => ({
       count: 0,
       high: 0,
@@ -451,7 +512,10 @@
       findings,
       bySkill,
       totalCount: findings.length,
-      truncated: Boolean(facts.truncated)
+      truncated: Boolean(facts.truncated),
+      unsupported,
+      exemptedCount,
+      profileName: profile?.name || "Default"
     };
   }
 
@@ -647,12 +711,121 @@
     const now = /* @__PURE__ */ new Date();
     return now.toISOString().split("T")[0];
   }
+  function getDefaultStandardsProfiles() {
+    return [
+      {
+        id: "profile-personal",
+        name: "Personal Learning",
+        context: "personal",
+        description: "Educational baseline: standard 8pt spacing grid, WCAG AA (4.5:1), and clean layer naming.",
+        spacing: {
+          baseGrid: 8,
+          allowedExceptions: [4, 12]
+        },
+        naming: {
+          pattern: "default-check",
+          forbiddenDefaults: true
+        },
+        contrast: {
+          standard: "AA",
+          minNormalRatio: 4.5,
+          minLargeRatio: 3
+        },
+        autoLayout: {
+          strictness: "containers-only"
+        },
+        exemptions: []
+      },
+      {
+        id: "profile-team",
+        name: "Acme Core (Team DS)",
+        context: "team",
+        description: "Strict team conventions: rigid 8pt grid, slash-hierarchy naming (e.g. Button/Primary), full Auto Layout.",
+        spacing: {
+          baseGrid: 8,
+          allowedExceptions: []
+        },
+        naming: {
+          pattern: "slash-hierarchy",
+          forbiddenDefaults: true
+        },
+        contrast: {
+          standard: "AA",
+          minNormalRatio: 4.5,
+          minLargeRatio: 3
+        },
+        autoLayout: {
+          strictness: "all-multi-child"
+        },
+        exemptions: []
+      },
+      {
+        id: "profile-freelance",
+        name: "Fintech App (Client A)",
+        context: "freelance",
+        description: "High-contrast accessible standard: WCAG AAA (7.0:1), compact 4pt spacing increments, PascalCase naming.",
+        spacing: {
+          baseGrid: 4,
+          allowedExceptions: []
+        },
+        naming: {
+          pattern: "pascal-case",
+          forbiddenDefaults: true
+        },
+        contrast: {
+          standard: "AAA",
+          minNormalRatio: 7,
+          minLargeRatio: 4.5
+        },
+        autoLayout: {
+          strictness: "containers-only"
+        },
+        exemptions: []
+      }
+    ];
+  }
+  function getDefaultWorkflowRelayNotes() {
+    return [
+      {
+        id: "relay-1",
+        author: "Elena (Outgoing Lead)",
+        context: "team",
+        topic: "overrides",
+        title: "Swap icons via component properties, do not detach",
+        guideline: "Use the instance swap property on icon slots instead of copy-pasting new vector icons into buttons.",
+        tradeoffReason: "Prevents detaching instances, preserving text and padding overrides across dark mode updates.",
+        targetScope: "Button / Action",
+        createdAt: "Yesterday"
+      },
+      {
+        id: "relay-2",
+        author: "Marcus (Design Ops)",
+        context: "team",
+        topic: "spacing",
+        title: "Modal dialogs use 24px outer margin, 16px inner gap",
+        guideline: "Keep vertical stacks inside cards to 16px item spacing to align with mobile viewport bounds.",
+        tradeoffReason: "Maintains touch targets for handheld ergonomics and avoids awkward scrolling on small screens.",
+        targetScope: "Card / Modal",
+        createdAt: "2 days ago"
+      }
+    ];
+  }
   function createDefaultLearnerState() {
     const today = getTodayDateString();
+    const profiles = getDefaultStandardsProfiles();
     return {
       xp: 0,
       streakDays: 0,
       lastActiveDate: "",
+      expertiseLevel: "intermediate",
+      activeProfileId: profiles[0].id,
+      profiles,
+      relayNotes: getDefaultWorkflowRelayNotes(),
+      exemptions: [],
+      onboardingComplete: false,
+      independentResolutions: 0,
+      auditHistory: [],
+      dismissedFindings: {},
       skills: {
         "contrast": { box: 0, dueDate: today, attempts: 0 },
         "spacing-grid": { box: 0, dueDate: today, attempts: 0 },
@@ -671,6 +844,11 @@
     const streakDays = typeof raw.streakDays === "number" && raw.streakDays >= 0 ? raw.streakDays : defaultState.streakDays;
     const lastActiveDate = typeof raw.lastActiveDate === "string" ? raw.lastActiveDate : "";
     const completedLessons = Array.isArray(raw.completedLessons) ? raw.completedLessons : [];
+    const expertiseLevel = raw.expertiseLevel === "beginner" || raw.expertiseLevel === "expert" || raw.expertiseLevel === "intermediate" ? raw.expertiseLevel : "intermediate";
+    const profiles = Array.isArray(raw.profiles) && raw.profiles.length > 0 ? raw.profiles : defaultState.profiles;
+    const activeProfileId = typeof raw.activeProfileId === "string" && profiles.some((p) => p.id === raw.activeProfileId) ? raw.activeProfileId : profiles[0].id;
+    const relayNotes = Array.isArray(raw.relayNotes) ? raw.relayNotes : defaultState.relayNotes;
+    const exemptions = Array.isArray(raw.exemptions) ? raw.exemptions : [];
     const skills = { ...defaultState.skills };
     const validSkills = ["contrast", "spacing-grid", "layer-naming", "auto-layout"];
     for (const s of validSkills) {
@@ -681,10 +859,23 @@
         skills[s] = { box, dueDate, attempts };
       }
     }
+    const onboardingComplete = typeof raw.onboardingComplete === "boolean" ? raw.onboardingComplete : false;
+    const independentResolutions = typeof raw.independentResolutions === "number" ? raw.independentResolutions : 0;
+    const auditHistory = Array.isArray(raw.auditHistory) ? raw.auditHistory : [];
+    const dismissedFindings = raw.dismissedFindings && typeof raw.dismissedFindings === "object" ? raw.dismissedFindings : {};
     return {
       xp,
       streakDays,
       lastActiveDate,
+      expertiseLevel,
+      activeProfileId,
+      profiles,
+      relayNotes,
+      exemptions,
+      onboardingComplete,
+      independentResolutions,
+      auditHistory,
+      dismissedFindings,
       skills,
       completedLessons
     };
@@ -881,15 +1072,17 @@
           } else {
             facts = await extractDesignFacts(figma.currentPage);
           }
-          const audit = analyzeAll(facts);
+          const state = await loadLearnerState();
+          const activeProfile = state.profiles?.find((p) => p.id === state.activeProfileId) || state.profiles?.[0];
+          const audit = analyzeAll(facts, activeProfile);
           if (figma.currentPage.name !== "SousArtist Practice") {
             const failedSkills = Object.keys(audit.bySkill).filter(
               (k) => audit.bySkill[k].count > 0
             );
             if (failedSkills.length > 0) {
-              const state = await loadLearnerState();
+              const state2 = await loadLearnerState();
               const { updatedState, droppedSkills } = resetLeitnerOnAuditFailure(
-                state,
+                state2,
                 failedSkills,
                 getTodayDateString()
               );
@@ -1049,6 +1242,130 @@
             });
           }
         }
+        break;
+      }
+      case "SET_EXPERTISE": {
+        if (msg.expertise === "beginner" || msg.expertise === "intermediate" || msg.expertise === "expert") {
+          const state = await loadLearnerState();
+          state.expertiseLevel = msg.expertise;
+          await saveLearnerState(state);
+          figma.notify(`Coaching mode set to: ${msg.expertise.toUpperCase()}`);
+          figma.ui.postMessage({ type: "LEARNER_STATE_LOADED", state });
+        }
+        break;
+      }
+      case "SET_ACTIVE_PROFILE": {
+        if (typeof msg.profileId === "string") {
+          const state = await loadLearnerState();
+          if (state.profiles?.some((p) => p.id === msg.profileId)) {
+            state.activeProfileId = msg.profileId;
+            await saveLearnerState(state);
+            const p = state.profiles.find((x) => x.id === msg.profileId);
+            figma.notify(`Standards Profile: "${p?.name || msg.profileId}" active.`);
+            figma.ui.postMessage({ type: "LEARNER_STATE_LOADED", state });
+          }
+        }
+        break;
+      }
+      case "ADD_EXEMPTION": {
+        if (typeof msg.nodeId === "string") {
+          const state = await loadLearnerState();
+          const activeProfile = state.profiles?.find((p) => p.id === state.activeProfileId) || state.profiles?.[0];
+          if (activeProfile && !activeProfile.exemptions.includes(msg.nodeId)) {
+            activeProfile.exemptions.push(msg.nodeId);
+            await saveLearnerState(state);
+            figma.notify(`Saved layer as intentional exception in "${activeProfile.name}".`);
+            figma.ui.postMessage({ type: "LEARNER_STATE_LOADED", state });
+          }
+        }
+        break;
+      }
+      case "ADD_RELAY_NOTE": {
+        if (msg.note && typeof msg.note === "object") {
+          const state = await loadLearnerState();
+          state.relayNotes = state.relayNotes || [];
+          state.relayNotes.unshift({
+            id: `relay-${Date.now()}`,
+            author: msg.note.author || "Designer",
+            context: msg.note.context || "team",
+            topic: msg.note.topic || "structure",
+            title: msg.note.title || "Working Pattern",
+            guideline: msg.note.guideline || "",
+            tradeoffReason: msg.note.tradeoffReason || "",
+            targetScope: msg.note.targetScope || "General",
+            createdAt: "Just now"
+          });
+          await saveLearnerState(state);
+          figma.notify(`Workflow Relay note added!`);
+          figma.ui.postMessage({ type: "LEARNER_STATE_LOADED", state });
+        }
+        break;
+      }
+      case "DISMISS_RELAY_NOTE": {
+        if (typeof msg.noteId === "string") {
+          const state = await loadLearnerState();
+          const note = state.relayNotes?.find((n) => n.id === msg.noteId);
+          if (note) {
+            note.dismissed = true;
+            await saveLearnerState(state);
+            figma.ui.postMessage({ type: "LEARNER_STATE_LOADED", state });
+          }
+        }
+        break;
+      }
+      case "COMPLETE_ONBOARDING": {
+        if (msg.expertise === "beginner" || msg.expertise === "intermediate" || msg.expertise === "expert") {
+          const state = await loadLearnerState();
+          state.expertiseLevel = msg.expertise;
+          state.onboardingComplete = true;
+          await saveLearnerState(state);
+          figma.notify(`Welcome! Coaching set to: ${msg.expertise.charAt(0).toUpperCase() + msg.expertise.slice(1)}`);
+          figma.ui.postMessage({ type: "LEARNER_STATE_LOADED", state });
+        }
+        break;
+      }
+      case "DISMISS_WITH_REASON": {
+        if (typeof msg.findingId === "string" && typeof msg.reason === "string") {
+          const state = await loadLearnerState();
+          state.dismissedFindings = state.dismissedFindings || {};
+          state.dismissedFindings[msg.findingId] = {
+            reason: msg.reason,
+            customNote: msg.customNote || void 0
+          };
+          if (msg.reason === "intentional" && msg.nodeId) {
+            const activeProfile = state.profiles?.find((p) => p.id === state.activeProfileId) || state.profiles?.[0];
+            if (activeProfile && !activeProfile.exemptions.includes(msg.nodeId)) {
+              activeProfile.exemptions.push(msg.nodeId);
+            }
+          }
+          await saveLearnerState(state);
+          const reasonLabels = {
+            "intentional": "Intentional design choice",
+            "not-applicable": "Not applicable to this context",
+            "remind-later": "Will revisit later"
+          };
+          figma.notify(reasonLabels[msg.reason] || "Exception noted.");
+          figma.ui.postMessage({ type: "LEARNER_STATE_LOADED", state });
+        }
+        break;
+      }
+      case "RECORD_AUDIT_HISTORY": {
+        if (msg.entry && typeof msg.entry === "object") {
+          const state = await loadLearnerState();
+          state.auditHistory = state.auditHistory || [];
+          state.auditHistory.push(msg.entry);
+          if (state.auditHistory.length > 20) {
+            state.auditHistory = state.auditHistory.slice(-20);
+          }
+          await saveLearnerState(state);
+        }
+        break;
+      }
+      case "INCREMENT_INDEPENDENT_RESOLUTIONS": {
+        const state = await loadLearnerState();
+        state.independentResolutions = (state.independentResolutions || 0) + 1;
+        await saveLearnerState(state);
+        figma.ui.postMessage({ type: "LEARNER_STATE_LOADED", state });
         break;
       }
       case "NOTIFY": {
