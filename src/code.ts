@@ -158,7 +158,7 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: any }) => {
         const skill = (msg.skill || currentPracticeSkill) as SkillId;
         const frameId = msg.frameId || currentPracticeFrameId;
 
-        if (!frameId) {
+        if (!frameId && !skill) {
           figma.ui.postMessage({
             type: 'VERIFICATION_RESULT',
             result: {

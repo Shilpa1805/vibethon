@@ -30,14 +30,17 @@ export async function buildPracticeFrame(skill: SkillId): Promise<string> {
   await figma.loadFontAsync({ family: 'Inter', style: 'Regular' });
   await figma.loadFontAsync({ family: 'Inter', style: 'Bold' });
 
-  // Remove previous frame for this skill if present
-  const existingFrame = practicePage.findChild((n) => n.name.startsWith(`[SousArtist] ${skill}`));
-  if (existingFrame) {
-    existingFrame.remove();
+  // Remove previous frame for this skill if present using plugin data tag
+  const oldFrames = practicePage.children.filter(
+    (n) => n.getPluginData('sousartist-skill') === skill || n.name.startsWith(`[SousArtist] ${skill}`)
+  );
+  for (const oldFrame of oldFrames) {
+    oldFrame.remove();
   }
 
   const frame = figma.createFrame();
   frame.name = `[SousArtist] ${skill} Practice`;
+  frame.setPluginData('sousartist-skill', skill);
   frame.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
   frame.cornerRadius = 8;
   frame.strokes = [{ type: 'SOLID', color: { r: 0.85, g: 0.87, b: 0.9 } }];
@@ -176,8 +179,20 @@ export async function buildPracticeFrame(skill: SkillId): Promise<string> {
   return frame.id;
 }
 
-export async function verifyCurrentPractice(skill: SkillId, frameId: string): Promise<VerificationResult> {
-  const node = await figma.getNodeByIdAsync(frameId);
+export async function verifyCurrentPractice(skill: SkillId, frameId?: string): Promise<VerificationResult> {
+  let node: BaseNode | null = null;
+  if (frameId) {
+    node = await figma.getNodeByIdAsync(frameId);
+  }
+
+  // If node not found by ID, look up by plugin data tag on the practice page
+  if (!node || node.type !== 'FRAME') {
+    const practicePage = await getOrCreatePracticePage();
+    node = practicePage.children.find(
+      (n) => n.type === 'FRAME' && n.getPluginData('sousartist-skill') === skill
+    ) || null;
+  }
+
   if (!node || node.type !== 'FRAME') {
     return {
       passed: false,

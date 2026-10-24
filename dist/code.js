@@ -578,12 +578,15 @@
     await figma.setCurrentPageAsync(practicePage);
     await figma.loadFontAsync({ family: "Inter", style: "Regular" });
     await figma.loadFontAsync({ family: "Inter", style: "Bold" });
-    const existingFrame = practicePage.findChild((n) => n.name.startsWith(`[SousArtist] ${skill}`));
-    if (existingFrame) {
-      existingFrame.remove();
+    const oldFrames = practicePage.children.filter(
+      (n) => n.getPluginData("sousartist-skill") === skill || n.name.startsWith(`[SousArtist] ${skill}`)
+    );
+    for (const oldFrame of oldFrames) {
+      oldFrame.remove();
     }
     const frame = figma.createFrame();
     frame.name = `[SousArtist] ${skill} Practice`;
+    frame.setPluginData("sousartist-skill", skill);
     frame.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }];
     frame.cornerRadius = 8;
     frame.strokes = [{ type: "SOLID", color: { r: 0.85, g: 0.87, b: 0.9 } }];
@@ -693,7 +696,16 @@
     return frame.id;
   }
   async function verifyCurrentPractice(skill, frameId) {
-    const node = await figma.getNodeByIdAsync(frameId);
+    let node = null;
+    if (frameId) {
+      node = await figma.getNodeByIdAsync(frameId);
+    }
+    if (!node || node.type !== "FRAME") {
+      const practicePage = await getOrCreatePracticePage();
+      node = practicePage.children.find(
+        (n) => n.type === "FRAME" && n.getPluginData("sousartist-skill") === skill
+      ) || null;
+    }
     if (!node || node.type !== "FRAME") {
       return {
         passed: false,
@@ -1132,7 +1144,7 @@
         try {
           const skill = msg.skill || currentPracticeSkill;
           const frameId = msg.frameId || currentPracticeFrameId;
-          if (!frameId) {
+          if (!frameId && !skill) {
             figma.ui.postMessage({
               type: "VERIFICATION_RESULT",
               result: {
