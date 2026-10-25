@@ -44,6 +44,27 @@ describe('Leitner Spaced Repetition', () => {
     expect(state.skills['contrast'].box).toBe(4);
   });
 
+  it('prevents premature box advancement when review date has not arrived (anti-spam)', () => {
+    let state = createDefaultLearnerState();
+    // Advance from Box 0 -> Box 1 on 2026-10-24 (due date set to 2026-10-27)
+    state = advanceLeitnerBox(state, 'contrast', '2026-10-24');
+    expect(state.skills['contrast'].box).toBe(1);
+    expect(state.skills['contrast'].dueDate).toBe('2026-10-27');
+
+    // Attempting to spam review on the same date (2026-10-24) keeps box at 1
+    state = advanceLeitnerBox(state, 'contrast', '2026-10-24');
+    expect(state.skills['contrast'].box).toBe(1);
+
+    // Attempting review before due date (2026-10-26) keeps box at 1
+    state = advanceLeitnerBox(state, 'contrast', '2026-10-26');
+    expect(state.skills['contrast'].box).toBe(1);
+
+    // Only on or after scheduled due date (2026-10-27) does it advance to Box 2
+    state = advanceLeitnerBox(state, 'contrast', '2026-10-27');
+    expect(state.skills['contrast'].box).toBe(2);
+    expect(state.skills['contrast'].dueDate).toBe('2026-11-03');
+  });
+
   it('resets a mastered skill to Box 0 upon real-file audit failure (transfer check)', () => {
     let state = createDefaultLearnerState();
     state = advanceLeitnerBox(state, 'contrast', '2026-10-24');

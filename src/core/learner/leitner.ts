@@ -12,12 +12,39 @@ export function addDays(dateStr: string, days: number): string {
   return d.toISOString().split('T')[0];
 }
 
+export function isSkillDue(
+  skillData: { box: number; dueDate: string } | undefined,
+  currentDate: string
+): boolean {
+  if (!skillData || skillData.box === 0) return true;
+  if (!skillData.dueDate) return true;
+  return currentDate >= skillData.dueDate;
+}
+
 export function advanceLeitnerBox(
   state: LearnerState,
   skill: SkillId,
   currentDate: string
 ): LearnerState {
   const skillData = state.skills[skill] || { box: 0, dueDate: currentDate, attempts: 0 };
+
+  // Only advance to higher Leitner box if unranked (Box 0) or if scheduled review is due.
+  // Practicing early reinforces attempts without artificially skipping spaced intervals.
+  const isDue = isSkillDue(skillData, currentDate);
+
+  if (!isDue) {
+    return {
+      ...state,
+      skills: {
+        ...state.skills,
+        [skill]: {
+          ...skillData,
+          attempts: skillData.attempts + 1,
+        },
+      },
+    };
+  }
+
   const nextBox = Math.min(4, skillData.box + 1) as 0 | 1 | 2 | 3 | 4;
   const interval = REVIEW_INTERVALS_DAYS[nextBox];
   const nextDueDate = addDays(currentDate, interval);

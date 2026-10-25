@@ -19,6 +19,7 @@ figma.showUI(__html__, { width: 380, height: 640, themeColors: true });
 
 let currentPracticeFrameId: string | null = null;
 let currentPracticeSkill: SkillId | null = null;
+const verifiedPracticeFrames = new Set<string>();
 
 figma.ui.onmessage = async (msg: { type: string; [key: string]: any }) => {
   switch (msg.type) {
@@ -173,11 +174,30 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: any }) => {
           break;
         }
 
+        if (frameId && verifiedPracticeFrames.has(frameId)) {
+          figma.ui.postMessage({
+            type: 'VERIFICATION_RESULT',
+            result: {
+              passed: false,
+              alreadyCompleted: true,
+              skill,
+              message: 'This practice frame has already been verified! Click "Set up practice frame" to start a new exercise.',
+            },
+          });
+          break;
+        }
+
         const result = await verifyCurrentPractice(skill, frameId);
 
         if (result.passed) {
+          if (frameId) {
+            verifiedPracticeFrames.add(frameId);
+          }
+          currentPracticeFrameId = null;
+
           const today = getTodayDateString();
           let state = await loadLearnerState();
+          const prevBox = state.skills[skill]?.box ?? 0;
 
           // Award XP
           const { updatedState: stateWithXp, earnedXp } = recordLessonCompletion(
@@ -187,9 +207,12 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: any }) => {
             today
           );
 
-          // Advance Leitner Box
+          // Advance Leitner Box (gated by scheduled due date)
           const finalState = advanceLeitnerBox(stateWithXp, skill, today);
           await saveLearnerState(finalState);
+
+          const newBox = finalState.skills[skill]?.box ?? 0;
+          const boxAdvanced = newBox > prevBox;
 
           figma.ui.postMessage({
             type: 'VERIFICATION_RESULT',
@@ -197,6 +220,12 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: any }) => {
               ...result,
               earnedXp,
               state: finalState,
+              boxAdvanced,
+              prevBox,
+              newBox,
+              message: boxAdvanced
+                ? `Great work! All checks passed deterministically (+${earnedXp} XP). Advanced to Leitner Box ${newBox}/4!`
+                : `Great work! All checks passed deterministically (+${earnedXp} XP). Retained at Box ${newBox}/4 until scheduled review on ${finalState.skills[skill]?.dueDate}.`,
             },
           });
         } else {

@@ -919,8 +919,26 @@
     d.setDate(d.getDate() + days);
     return d.toISOString().split("T")[0];
   }
+  function isSkillDue(skillData, currentDate) {
+    if (!skillData || skillData.box === 0) return true;
+    if (!skillData.dueDate) return true;
+    return currentDate >= skillData.dueDate;
+  }
   function advanceLeitnerBox(state, skill, currentDate) {
     const skillData = state.skills[skill] || { box: 0, dueDate: currentDate, attempts: 0 };
+    const isDue = isSkillDue(skillData, currentDate);
+    if (!isDue) {
+      return {
+        ...state,
+        skills: {
+          ...state.skills,
+          [skill]: {
+            ...skillData,
+            attempts: skillData.attempts + 1
+          }
+        }
+      };
+    }
     const nextBox = Math.min(4, skillData.box + 1);
     const interval = REVIEW_INTERVALS_DAYS[nextBox];
     const nextDueDate = addDays(currentDate, interval);
@@ -1522,6 +1540,7 @@ STRICT RULES:
   figma.showUI(__html__, { width: 380, height: 640, themeColors: true });
   var currentPracticeFrameId = null;
   var currentPracticeSkill = null;
+  var verifiedPracticeFrames = /* @__PURE__ */ new Set();
   figma.ui.onmessage = async (msg) => {
     switch (msg.type) {
       case "INIT_APP": {
@@ -1661,10 +1680,27 @@ STRICT RULES:
             });
             break;
           }
+          if (frameId && verifiedPracticeFrames.has(frameId)) {
+            figma.ui.postMessage({
+              type: "VERIFICATION_RESULT",
+              result: {
+                passed: false,
+                alreadyCompleted: true,
+                skill,
+                message: 'This practice frame has already been verified! Click "Set up practice frame" to start a new exercise.'
+              }
+            });
+            break;
+          }
           const result = await verifyCurrentPractice(skill, frameId);
           if (result.passed) {
+            if (frameId) {
+              verifiedPracticeFrames.add(frameId);
+            }
+            currentPracticeFrameId = null;
             const today = getTodayDateString();
             let state = await loadLearnerState();
+            const prevBox = state.skills[skill]?.box ?? 0;
             const { updatedState: stateWithXp, earnedXp } = recordLessonCompletion(
               state,
               `lesson-${skill}`,
@@ -1673,12 +1709,18 @@ STRICT RULES:
             );
             const finalState = advanceLeitnerBox(stateWithXp, skill, today);
             await saveLearnerState(finalState);
+            const newBox = finalState.skills[skill]?.box ?? 0;
+            const boxAdvanced = newBox > prevBox;
             figma.ui.postMessage({
               type: "VERIFICATION_RESULT",
               result: {
                 ...result,
                 earnedXp,
-                state: finalState
+                state: finalState,
+                boxAdvanced,
+                prevBox,
+                newBox,
+                message: boxAdvanced ? `Great work! All checks passed deterministically (+${earnedXp} XP). Advanced to Leitner Box ${newBox}/4!` : `Great work! All checks passed deterministically (+${earnedXp} XP). Retained at Box ${newBox}/4 until scheduled review on ${finalState.skills[skill]?.dueDate}.`
               }
             });
           } else {
