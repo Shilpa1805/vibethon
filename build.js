@@ -9,7 +9,7 @@ async function buildPlugin() {
     fs.mkdirSync('dist', { recursive: true });
   }
 
-  const proxyUrl = process.env.SOUSARTIST_PROXY_URL || '';
+  const proxyUrl = process.env.SOUSARTIST_PROXY_URL || 'https://sousartist.vercel.app/api/llm';
   const defines = {
     '__SOUSARTIST_PROXY_URL__': JSON.stringify(proxyUrl),
   };

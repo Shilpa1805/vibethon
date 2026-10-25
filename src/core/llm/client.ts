@@ -18,8 +18,11 @@ export class ResilientLlmClient implements LlmClient {
 
   constructor(options?: { proxyUrl?: string }) {
     this.proxyUrl =
-      options?.proxyUrl ??
-      (typeof __SOUSARTIST_PROXY_URL__ !== 'undefined' ? __SOUSARTIST_PROXY_URL__ : '');
+      options?.proxyUrl !== undefined
+        ? options.proxyUrl
+        : (typeof __SOUSARTIST_PROXY_URL__ !== 'undefined' && __SOUSARTIST_PROXY_URL__
+            ? __SOUSARTIST_PROXY_URL__
+            : 'https://sousartist.vercel.app/api/llm');
   }
 
   // djb2 32-bit string hash for payload cache deduplication.

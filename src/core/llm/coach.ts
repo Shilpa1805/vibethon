@@ -161,9 +161,21 @@ Answer in at most 50 words explaining the principle, rule, or architectural trad
       // Ignore network errors and use conceptual explanation
     }
 
-    // Default conceptual response
+    // Smart contextual offline fallback if network or proxy is unavailable
+    const q = query.toLowerCase();
+    let offlineFallback = `Good design relies on clear hierarchy and standard rules: WCAG contrast (4.5:1), consistent 8pt spacing, and semantic layer structure. Try one of our 2-minute lessons to practice.`;
+    if (closestSkill === 'auto-layout' || q.includes('auto layout') || q.includes('layout')) {
+      offlineFallback = `Auto Layout (Shift+A) turns frames into responsive containers where elements reflow automatically with consistent gap and padding as content resizes.`;
+    } else if (closestSkill === 'contrast' || q.includes('contrast') || q.includes('color')) {
+      offlineFallback = `Color contrast ensures text is readable. WCAG AA requires at least 4.5:1 for normal text and 3.0:1 for large text against its background.`;
+    } else if (closestSkill === 'spacing-grid' || q.includes('spacing') || q.includes('grid') || q.includes('8pt')) {
+      offlineFallback = `An 8-point spacing grid uses multiples of 8 (8, 16, 24, 32px) to establish visual rhythm, eliminate arbitrary margins, and speed up handoff.`;
+    } else if (closestSkill === 'layer-naming' || q.includes('nam') || q.includes('layer')) {
+      offlineFallback = `Semantic layer naming replaces default Figma boilerplate (e.g. "Frame 12") with purposeful names (e.g. CardHeader, Avatar) to keep components maintainable.`;
+    }
+
     return {
-      response: `Good design relies on clear hierarchy and standard rules: WCAG contrast (4.5:1), consistent 8pt spacing, and semantic layer structure. Try one of our 2-minute lessons to practice.`,
+      response: offlineFallback,
       intent: 'explain_concept',
       offline: true,
     };
