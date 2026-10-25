@@ -1016,7 +1016,7 @@
   var ResilientLlmClient = class {
     constructor(options) {
       this.cache = /* @__PURE__ */ new Map();
-      this.proxyUrl = options?.proxyUrl ?? (true ? "https://sousartist.vercel.app/api/llm" : "");
+      this.proxyUrl = options?.proxyUrl ?? (true ? "" : "");
     }
     // djb2 32-bit string hash for payload cache deduplication.
     // This is NOT a cryptographic hash — it prevents duplicate LLM calls for identical

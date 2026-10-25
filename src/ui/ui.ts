@@ -14,6 +14,12 @@ let currentHintLevel = 0;
 let hintsUsedInSession = 0;
 let pendingPracticeContext: { skill: SkillId; nodeName?: string } | null = null;
 let lastAudit: { audit: any; pageName: string } | null = null; // stored for AI relay analysis
+let lastVerifiedSuccess: {
+  completedSkill: SkillId;
+  nextSkill: SkillId;
+  earnedXp: number;
+  message: string;
+} | null = null;
 const coach = new SousArtistCoach();
 
 // Tab Switching
@@ -852,6 +858,30 @@ export function renderPathTab() {
 
   let html = '';
 
+  if (lastVerifiedSuccess) {
+    html += `
+      <div class="card" id="lesson-success-banner" style="background:rgba(16,185,129,0.12); border:1px solid var(--success-color); padding:12px; margin-bottom:12px; border-radius:8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="font-weight:700; color:var(--success-color); font-size:13px; display:flex; align-items:center; gap:6px;">
+            <span>✓</span>
+            <span>${escapeHtml(LESSONS[lastVerifiedSuccess.completedSkill].title)} Verified!</span>
+          </div>
+          <span style="font-weight:700; color:var(--success-color); font-size:12px; background:rgba(16,185,129,0.2); padding:2px 8px; border-radius:12px;">+${lastVerifiedSuccess.earnedXp} XP</span>
+        </div>
+        <div style="font-size:12px; color:var(--text-secondary); margin-top:6px; line-height:1.4;">
+          ${escapeHtml(lastVerifiedSuccess.message)}
+        </div>
+        <div style="margin-top:10px; padding-top:8px; border-top:1px solid rgba(16,185,129,0.2); display:flex; justify-content:space-between; align-items:center;">
+          <div style="font-size:12px; font-weight:600; color:var(--text-primary); display:flex; align-items:center; gap:6px;">
+            <span>👉</span>
+            <span>Moving onto next area: <strong>${escapeHtml(LESSONS[lastVerifiedSuccess.nextSkill].title)}</strong></span>
+          </div>
+          <button id="btn-dismiss-success-banner" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:12px; padding:2px 6px;">✕</button>
+        </div>
+      </div>
+    `;
+  }
+
   if (pendingPracticeContext) {
     html += `
       <div class="card" style="background:rgba(59,130,246,0.1); border-color:var(--accent-color); padding:10px 12px; margin-bottom:10px; font-size:11px; display:flex; justify-content:space-between; align-items:center;">
@@ -885,7 +915,7 @@ export function renderPathTab() {
             </div>
           </div>
           <div style="display:flex; align-items:center; gap:6px;">
-            ${skill === 'contrast' ? `<span class="badge-tag" style="background:rgba(16,185,129,0.15); color:var(--success-color);">Recommended</span>` : ''}
+            ${isSelected ? `<span class="badge-tag" style="background:rgba(59,130,246,0.15); color:var(--accent-color);">Active Lesson</span>` : (skill === 'contrast' && !lastVerifiedSuccess ? `<span class="badge-tag" style="background:rgba(16,185,129,0.15); color:var(--success-color);">Recommended</span>` : '')}
             <span style="font-size:12px; color:var(--text-secondary);">${isSelected ? '▲' : '▼'}</span>
           </div>
         </div>
@@ -927,6 +957,14 @@ export function renderPathTab() {
 
   pathContainer.innerHTML = html;
 
+  const btnDismissSuccess = document.getElementById('btn-dismiss-success-banner');
+  if (btnDismissSuccess) {
+    btnDismissSuccess.addEventListener('click', () => {
+      lastVerifiedSuccess = null;
+      renderPathTab();
+    });
+  }
+
   const btnDismissContext = document.getElementById('btn-dismiss-context-challenge');
   if (btnDismissContext) {
     btnDismissContext.addEventListener('click', () => {
@@ -941,6 +979,8 @@ export function renderPathTab() {
       if (skill) {
         activeSkill = skill;
         currentHintLevel = 0;
+        hintsUsedInSession = 0;
+        lastVerifiedSuccess = null;
         renderPathTab();
       }
     });
@@ -1398,30 +1438,40 @@ window.onmessage = (event) => {
       const btnVerify = document.getElementById('btn-verify-practice');
       if (btnVerify) btnVerify.textContent = 'Check my work';
 
-      const resBox = document.getElementById('verification-result-box');
-      if (resBox) {
-        if (msg.result.passed) {
-          resBox.innerHTML = `
-            <div class="card" style="background:rgba(16,185,129,0.1); border-color:var(--success-color); padding:10px;">
-              <div style="font-weight:700; color:var(--success-color); font-size:13px; display:flex; justify-content:space-between;">
-                <span>✓ Verified by Rule Engine!</span>
-                <span>+${msg.result.earnedXp || 10} XP</span>
-              </div>
-              <div style="font-size:12px; margin-top:4px;">${escapeHtml(msg.result.message)}</div>
-            </div>
-          `;
-          if (msg.result.state) {
-            learnerState = msg.result.state;
-            const xpEl = document.getElementById('stat-xp');
-            if (xpEl && learnerState) xpEl.textContent = `${learnerState.xp} XP`;
-            // Clear practice context and advance to next skill
-            pendingPracticeContext = null;
-            // Refresh Path tab to show next exercise
-            renderPathTab();
-            // Optionally switch back to Path tab for user
-            switchTab('path');
-          }
-        } else {
+      if (msg.result.passed) {
+        const completedSkill = (msg.result.skill || activeSkill) as SkillId;
+        const SKILL_ORDER: SkillId[] = ['contrast', 'spacing-grid', 'layer-naming', 'auto-layout'];
+        const currentIndex = SKILL_ORDER.indexOf(completedSkill);
+        const nextSkill = SKILL_ORDER[(currentIndex + 1) % SKILL_ORDER.length];
+
+        lastVerifiedSuccess = {
+          completedSkill,
+          nextSkill,
+          earnedXp: msg.result.earnedXp || 10,
+          message: msg.result.message || 'Fix verified by rule engine.',
+        };
+
+        if (msg.result.state) {
+          learnerState = msg.result.state;
+          const xpEl = document.getElementById('stat-xp');
+          if (xpEl && learnerState) xpEl.textContent = `${learnerState.xp} XP`;
+        }
+
+        // Advance to next lesson in the 4-area sequence!
+        activeSkill = nextSkill;
+        activeFrameId = null;
+        currentHintLevel = 0;
+        hintsUsedInSession = 0;
+        pendingPracticeContext = null;
+
+        showToast(`✓ ${LESSONS[completedSkill].title} verified (+${lastVerifiedSuccess.earnedXp} XP)! Advancing to ${LESSONS[nextSkill].title}.`);
+
+        // Refresh Path tab with the next lesson open and success banner displayed
+        renderPathTab();
+        switchTab('path');
+      } else {
+        const resBox = document.getElementById('verification-result-box');
+        if (resBox) {
           resBox.innerHTML = `
             <div class="card" style="background:rgba(245,158,11,0.1); border-color:var(--warning-color); padding:10px;">
               <div style="font-weight:700; color:var(--warning-color); font-size:13px;">

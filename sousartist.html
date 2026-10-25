@@ -584,36 +584,128 @@
     const simBody = document.getElementById('sim-body');
     const simTabs = document.querySelectorAll('.plugin-tab-btn');
 
+    // 4-Area Practice Sequence Simulator
+    let simCurrentSkillIndex = 0;
+    let simXp = 15;
+    const simSkills = [
+      {
+        id: 'contrast',
+        title: '🌓 Color Contrast',
+        goal: 'Darken text using the live card slider above until ratio >= 4.5:1.',
+        interactiveHtml: '',
+        check: () => {
+          const val = parseInt(colorSlider.value);
+          const l1 = relLuminance(255, 255, 255);
+          const l2 = relLuminance(val, val, val);
+          const ratio = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+          const passed = ratio >= 4.5;
+          return { passed, msg: passed ? `Contrast ratio is ${ratio.toFixed(2)}:1 (Passes WCAG AA!)` : `Ratio is currently ${ratio.toFixed(2)}:1 (needs at least 4.5:1). Drag the slider darker!` };
+        }
+      },
+      {
+        id: 'spacing-grid',
+        title: '📐 8-Point Spacing Grid',
+        goal: 'Adjust container gap from odd 13px to an 8pt multiple (8, 16, or 24px).',
+        interactiveHtml: `
+          <div style="font-size:11px; display:flex; align-items:center; gap:8px; margin:4px 0;">
+            <span>Auto Layout Gap:</span>
+            <input type="number" id="sim-input-gap" value="13" style="width:60px; padding:3px 6px; background:var(--bg-card); border:1px solid var(--border-color); color:var(--text-main); border-radius:4px; font-weight:700;">
+            <span style="color:var(--text-sub);">(multiples of 8)</span>
+          </div>
+        `,
+        check: () => {
+          const gapEl = document.getElementById('sim-input-gap');
+          const val = gapEl ? parseInt(gapEl.value) : 13;
+          const passed = val > 0 && val % 8 === 0;
+          return { passed, msg: passed ? `Gap is ${val}px (aligned with 8pt grid!)` : `Gap is ${val}px (odd number breaks grid; try 8, 16, or 24).` };
+        }
+      },
+      {
+        id: 'layer-naming',
+        title: '🏷️ Semantic Layer Naming',
+        goal: 'Rename default layer "Frame 12" to a descriptive semantic name (e.g. CardContainer).',
+        interactiveHtml: `
+          <div style="font-size:11px; display:flex; align-items:center; gap:8px; margin:4px 0;">
+            <span>Layer Name:</span>
+            <input type="text" id="sim-input-layer" value="Frame 12" style="flex:1; padding:3px 6px; background:var(--bg-card); border:1px solid var(--border-color); color:var(--text-main); border-radius:4px; font-weight:600;">
+          </div>
+        `,
+        check: () => {
+          const nameEl = document.getElementById('sim-input-layer');
+          const val = (nameEl ? nameEl.value : 'Frame 12').trim();
+          const isBoilerplate = /^(Frame|Rectangle|Group|Vector)\s*\d+$/i.test(val);
+          const passed = val.length > 2 && !isBoilerplate;
+          return { passed, msg: passed ? `Layer name "${val}" is descriptive and semantic!` : `"${val}" matches default boilerplate. Rename to describe its purpose.` };
+        }
+      },
+      {
+        id: 'auto-layout',
+        title: '📦 Responsive Auto Layout',
+        goal: 'Convert frame with 3 loose children to Auto Layout (Vertical) for responsiveness.',
+        interactiveHtml: `
+          <div style="font-size:11px; display:flex; align-items:center; gap:8px; margin:4px 0;">
+            <span>Layout Mode:</span>
+            <select id="sim-select-layout" style="flex:1; padding:3px 6px; background:var(--bg-card); border:1px solid var(--border-color); color:var(--text-main); border-radius:4px; font-weight:600;">
+              <option value="NONE">NONE (Manual Position)</option>
+              <option value="VERTICAL">VERTICAL (Auto Layout)</option>
+              <option value="HORIZONTAL">HORIZONTAL (Auto Layout)</option>
+            </select>
+          </div>
+        `,
+        check: () => {
+          const sel = document.getElementById('sim-select-layout');
+          const val = sel ? sel.value : 'NONE';
+          const passed = val === 'VERTICAL' || val === 'HORIZONTAL';
+          return { passed, msg: passed ? `Auto Layout (${val}) applied! Children reflow responsively.` : `layoutMode is still NONE. Select VERTICAL Auto Layout.` };
+        }
+      }
+    ];
+
     function renderSimTab(tab) {
       if (tab === 'sim-path') {
+        const curSkill = simSkills[simCurrentSkillIndex];
+        const nextSkill = simSkills[(simCurrentSkillIndex + 1) % simSkills.length];
+        const isMastered = simCurrentSkillIndex === 0 && simXp > 15;
+
         simBody.innerHTML = `
           <div style="background:var(--bg-panel); border:1px solid var(--border-color); border-radius:6px; padding:10px;">
-            <div style="font-weight:700; font-size:12px;">Daily Goal: 0 / 1 Completed</div>
-            <div style="background:var(--border-color); height:4px; border-radius:2px; margin-top:6px;"></div>
+            <div style="display:flex; justify-content:space-between; font-weight:700; font-size:12px;">
+              <span>Daily Goal: ${simCurrentSkillIndex > 0 ? `${simCurrentSkillIndex} / 4 Completed` : '0 / 4 Completed'}</span>
+              <span style="color:var(--accent);">Lesson ${simCurrentSkillIndex + 1} of 4</span>
+            </div>
+            <div style="background:var(--border-color); height:4px; border-radius:2px; margin-top:6px; overflow:hidden;">
+              <div style="background:var(--success); height:100%; width:${(simCurrentSkillIndex / 4) * 100}%; transition:width 0.3s ease;"></div>
+            </div>
           </div>
           <div style="background:var(--bg-panel); border:1px solid var(--accent); border-radius:6px; padding:10px; display:flex; flex-direction:column; gap:8px;">
             <div style="display:flex; justify-content:space-between; align-items:center;">
-              <strong>🌓 Color Contrast</strong>
-              <span style="font-size:10px; background:rgba(16,185,129,0.15); color:var(--success); padding:2px 6px; border-radius:4px;">Recommended</span>
+              <strong>${curSkill.title}</strong>
+              <span style="font-size:10px; background:rgba(59,130,246,0.15); color:var(--accent); padding:2px 6px; border-radius:4px;">Active Lesson</span>
             </div>
-            <div style="font-size:11px; color:var(--text-sub);">Darken text on white card until ratio >= 4.5:1.</div>
+            <div style="font-size:11px; color:var(--text-sub);">${curSkill.goal}</div>
+            ${curSkill.interactiveHtml}
             <button id="sim-btn-check" style="background:var(--accent); color:#fff; border:none; padding:6px 12px; border-radius:4px; font-weight:700; cursor:pointer;">Check my work</button>
             <div id="sim-check-res"></div>
           </div>
         `;
 
         document.getElementById('sim-btn-check').addEventListener('click', () => {
-          const val = parseInt(colorSlider.value);
-          const l1 = relLuminance(255, 255, 255);
-          const l2 = relLuminance(val, val, val);
-          const ratio = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
-
+          const res = curSkill.check();
           const resEl = document.getElementById('sim-check-res');
-          if (ratio >= 4.5) {
-            resEl.innerHTML = `<span style="color:var(--success); font-weight:700;">✓ Verified! +15 XP</span>`;
-            document.getElementById('sim-xp-display').textContent = '⚡ 30 XP • 🔥 1d';
+          if (res.passed) {
+            simXp += 15;
+            document.getElementById('sim-xp-display').textContent = `⚡ ${simXp} XP • 🔥 1d`;
+            resEl.innerHTML = `
+              <div style="color:var(--success); font-weight:700; margin-top:4px;">✓ Verified by Rule Engine! +15 XP</div>
+              <div style="font-size:11px; color:var(--text-sub); margin-top:2px;">${res.msg}</div>
+              <div style="margin-top:6px; font-size:11px; font-weight:600; color:var(--text-main);">👉 Moving to next area: <strong>${nextSkill.title}</strong></div>
+            `;
+            setTimeout(() => {
+              simCurrentSkillIndex = (simCurrentSkillIndex + 1) % simSkills.length;
+              renderSimTab('sim-path');
+            }, 1200);
           } else {
-            resEl.innerHTML = `<span style="color:var(--warning); font-weight:700;">Needs work: ratio is ${ratio.toFixed(2)}:1 (needs 4.5:1)</span>`;
+            resEl.innerHTML = `<span style="color:var(--warning); font-weight:700;">Needs work: ${res.msg}</span>`;
           }
         });
       } else if (tab === 'sim-audit') {

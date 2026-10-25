@@ -792,7 +792,7 @@ button:focus-visible {
   var ResilientLlmClient = class {
     constructor(options) {
       this.cache = /* @__PURE__ */ new Map();
-      this.proxyUrl = options?.proxyUrl ?? (true ? "https://sousartist.vercel.app/api/llm" : "");
+      this.proxyUrl = options?.proxyUrl ?? (true ? "" : "");
     }
     // djb2 32-bit string hash for payload cache deduplication.
     // This is NOT a cryptographic hash — it prevents duplicate LLM calls for identical
@@ -1265,6 +1265,7 @@ STRICT RULES:
   var hintsUsedInSession = 0;
   var pendingPracticeContext = null;
   var lastAudit = null;
+  var lastVerifiedSuccess = null;
   var coach = new SousArtistCoach();
   var tabButtons = document.querySelectorAll(".tab-btn");
   var tabContents = document.querySelectorAll(".tab-content");
@@ -1983,6 +1984,29 @@ STRICT RULES:
       "auto-layout": "\u{1F4E6}"
     };
     let html = "";
+    if (lastVerifiedSuccess) {
+      html += `
+      <div class="card" id="lesson-success-banner" style="background:rgba(16,185,129,0.12); border:1px solid var(--success-color); padding:12px; margin-bottom:12px; border-radius:8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="font-weight:700; color:var(--success-color); font-size:13px; display:flex; align-items:center; gap:6px;">
+            <span>\u2713</span>
+            <span>${escapeHtml(LESSONS[lastVerifiedSuccess.completedSkill].title)} Verified!</span>
+          </div>
+          <span style="font-weight:700; color:var(--success-color); font-size:12px; background:rgba(16,185,129,0.2); padding:2px 8px; border-radius:12px;">+${lastVerifiedSuccess.earnedXp} XP</span>
+        </div>
+        <div style="font-size:12px; color:var(--text-secondary); margin-top:6px; line-height:1.4;">
+          ${escapeHtml(lastVerifiedSuccess.message)}
+        </div>
+        <div style="margin-top:10px; padding-top:8px; border-top:1px solid rgba(16,185,129,0.2); display:flex; justify-content:space-between; align-items:center;">
+          <div style="font-size:12px; font-weight:600; color:var(--text-primary); display:flex; align-items:center; gap:6px;">
+            <span>\u{1F449}</span>
+            <span>Moving onto next area: <strong>${escapeHtml(LESSONS[lastVerifiedSuccess.nextSkill].title)}</strong></span>
+          </div>
+          <button id="btn-dismiss-success-banner" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:12px; padding:2px 6px;">\u2715</button>
+        </div>
+      </div>
+    `;
+    }
     if (pendingPracticeContext) {
       html += `
       <div class="card" style="background:rgba(59,130,246,0.1); border-color:var(--accent-color); padding:10px 12px; margin-bottom:10px; font-size:11px; display:flex; justify-content:space-between; align-items:center;">
@@ -2014,7 +2038,7 @@ STRICT RULES:
             </div>
           </div>
           <div style="display:flex; align-items:center; gap:6px;">
-            ${skill === "contrast" ? `<span class="badge-tag" style="background:rgba(16,185,129,0.15); color:var(--success-color);">Recommended</span>` : ""}
+            ${isSelected ? `<span class="badge-tag" style="background:rgba(59,130,246,0.15); color:var(--accent-color);">Active Lesson</span>` : skill === "contrast" && !lastVerifiedSuccess ? `<span class="badge-tag" style="background:rgba(16,185,129,0.15); color:var(--success-color);">Recommended</span>` : ""}
             <span style="font-size:12px; color:var(--text-secondary);">${isSelected ? "\u25B2" : "\u25BC"}</span>
           </div>
         </div>
@@ -2051,6 +2075,13 @@ STRICT RULES:
     </div>
   `;
     pathContainer.innerHTML = html;
+    const btnDismissSuccess = document.getElementById("btn-dismiss-success-banner");
+    if (btnDismissSuccess) {
+      btnDismissSuccess.addEventListener("click", () => {
+        lastVerifiedSuccess = null;
+        renderPathTab();
+      });
+    }
     const btnDismissContext = document.getElementById("btn-dismiss-context-challenge");
     if (btnDismissContext) {
       btnDismissContext.addEventListener("click", () => {
@@ -2064,6 +2095,8 @@ STRICT RULES:
         if (skill) {
           activeSkill = skill;
           currentHintLevel = 0;
+          hintsUsedInSession = 0;
+          lastVerifiedSuccess = null;
           renderPathTab();
         }
       });
@@ -2458,27 +2491,33 @@ STRICT RULES:
       case "VERIFICATION_RESULT": {
         const btnVerify = document.getElementById("btn-verify-practice");
         if (btnVerify) btnVerify.textContent = "Check my work";
-        const resBox = document.getElementById("verification-result-box");
-        if (resBox) {
-          if (msg.result.passed) {
-            resBox.innerHTML = `
-            <div class="card" style="background:rgba(16,185,129,0.1); border-color:var(--success-color); padding:10px;">
-              <div style="font-weight:700; color:var(--success-color); font-size:13px; display:flex; justify-content:space-between;">
-                <span>\u2713 Verified by Rule Engine!</span>
-                <span>+${msg.result.earnedXp || 10} XP</span>
-              </div>
-              <div style="font-size:12px; margin-top:4px;">${escapeHtml(msg.result.message)}</div>
-            </div>
-          `;
-            if (msg.result.state) {
-              learnerState = msg.result.state;
-              const xpEl = document.getElementById("stat-xp");
-              if (xpEl && learnerState) xpEl.textContent = `${learnerState.xp} XP`;
-              pendingPracticeContext = null;
-              renderPathTab();
-              switchTab("path");
-            }
-          } else {
+        if (msg.result.passed) {
+          const completedSkill = msg.result.skill || activeSkill;
+          const SKILL_ORDER = ["contrast", "spacing-grid", "layer-naming", "auto-layout"];
+          const currentIndex = SKILL_ORDER.indexOf(completedSkill);
+          const nextSkill = SKILL_ORDER[(currentIndex + 1) % SKILL_ORDER.length];
+          lastVerifiedSuccess = {
+            completedSkill,
+            nextSkill,
+            earnedXp: msg.result.earnedXp || 10,
+            message: msg.result.message || "Fix verified by rule engine."
+          };
+          if (msg.result.state) {
+            learnerState = msg.result.state;
+            const xpEl = document.getElementById("stat-xp");
+            if (xpEl && learnerState) xpEl.textContent = `${learnerState.xp} XP`;
+          }
+          activeSkill = nextSkill;
+          activeFrameId = null;
+          currentHintLevel = 0;
+          hintsUsedInSession = 0;
+          pendingPracticeContext = null;
+          showToast(`\u2713 ${LESSONS[completedSkill].title} verified (+${lastVerifiedSuccess.earnedXp} XP)! Advancing to ${LESSONS[nextSkill].title}.`);
+          renderPathTab();
+          switchTab("path");
+        } else {
+          const resBox = document.getElementById("verification-result-box");
+          if (resBox) {
             resBox.innerHTML = `
             <div class="card" style="background:rgba(245,158,11,0.1); border-color:var(--warning-color); padding:10px;">
               <div style="font-weight:700; color:var(--warning-color); font-size:13px;">
